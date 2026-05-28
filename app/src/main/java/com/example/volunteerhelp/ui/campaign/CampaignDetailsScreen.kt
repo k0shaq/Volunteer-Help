@@ -119,7 +119,6 @@ fun CampaignDetailsScreen(
             } else {
                 InfoCard("Матеріальна допомога", campaign.materialGoal.ifBlank { "Потрібна матеріальна допомога" })
                 Text("Підтверджено допомог: ${campaign.currentAmount.toInt()}")
-                if (isOwner) InfoCard("QR-підтвердження", "QR-підтвердження буде доступне пізніше.")
             }
             SectionHeader("Реквізити")
             InfoCard("Дані для допомоги", campaign.requisites.ifBlank { "Реквізити не вказано" })
@@ -141,7 +140,7 @@ fun CampaignDetailsScreen(
                 EmptyStateView("Звітів ще немає", "Після завершення волонтер додасть пост-звіт.")
             } else {
                 reports.forEach { report ->
-                    ReportCard(report = report, onOpenCampaign = {})
+                    ReportCard(report = report, onOpenCampaign = {}, showCampaignLink = false)
                 }
             }
         }

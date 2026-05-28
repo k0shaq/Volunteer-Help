@@ -87,7 +87,7 @@ class FirestoreRepository(
         }.await()
     }
 
-    suspend fun verifyVolunteerDemo(userId: String) {
+    suspend fun verifyVolunteer(userId: String) {
         val verifiedAt = System.currentTimeMillis()
         firestore.collection(Constants.USERS_COLLECTION).document(userId)
             .set(mapOf("isVerified" to true, "verifiedAt" to verifiedAt), SetOptions.merge())
@@ -108,6 +108,30 @@ class FirestoreRepository(
                 listOf(user.name, user.username, user.usernameLowercase, user.email, user.city, user.region)
                     .any { it.lowercase().contains(normalized) }
             }
+            .sortedWith(compareByDescending<User> { it.isVerified }.thenBy { it.name.lowercase() })
+    }
+
+    suspend fun getFollowers(userId: String): List<User> {
+        val follows = firestore.collection(Constants.FOLLOWS_COLLECTION)
+            .whereEqualTo("followingId", userId)
+            .get()
+            .await()
+            .documents
+            .mapNotNull { it.getString("followerId") }
+
+        return follows.mapNotNull { getUser(it) }
+            .sortedWith(compareByDescending<User> { it.isVerified }.thenBy { it.name.lowercase() })
+    }
+
+    suspend fun getFollowing(userId: String): List<User> {
+        val follows = firestore.collection(Constants.FOLLOWS_COLLECTION)
+            .whereEqualTo("followerId", userId)
+            .get()
+            .await()
+            .documents
+            .mapNotNull { it.getString("followingId") }
+
+        return follows.mapNotNull { getUser(it) }
             .sortedWith(compareByDescending<User> { it.isVerified }.thenBy { it.name.lowercase() })
     }
 
@@ -148,6 +172,19 @@ class FirestoreRepository(
     fun observeFollowersCount(userId: String): Flow<Int> = observeCount(Constants.FOLLOWS_COLLECTION, "followingId", userId)
 
     fun observeFollowingCount(userId: String): Flow<Int> = observeCount(Constants.FOLLOWS_COLLECTION, "followerId", userId)
+
+    fun observeFollowingIds(userId: String): Flow<Set<String>> = callbackFlow {
+        val listener = firestore.collection(Constants.FOLLOWS_COLLECTION)
+            .whereEqualTo("followerId", userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend(snapshot?.documents.orEmpty().mapNotNull { it.getString("followingId") }.toSet())
+            }
+        awaitClose { listener.remove() }
+    }
 
     fun observeUserRating(userId: String): Flow<Int> = callbackFlow {
         val listener = firestore.collection(Constants.HELP_REQUESTS_COLLECTION)

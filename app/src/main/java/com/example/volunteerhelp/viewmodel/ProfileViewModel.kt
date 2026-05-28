@@ -25,6 +25,10 @@ data class ProfileUiState(
     val user: User? = null,
     val publicUser: User? = null,
     val searchResults: List<User> = emptyList(),
+    val followingIds: Set<String> = emptySet(),
+    val followListUsers: List<User> = emptyList(),
+    val followListTitle: String? = null,
+    val isFollowListLoading: Boolean = false,
     val stats: ProfileStats = ProfileStats(),
     val isFollowing: Boolean = false,
     val errorMessage: String? = null,
@@ -41,6 +45,7 @@ class ProfileViewModel(
 
     private var profileJob: Job? = null
     private var publicProfileJob: Job? = null
+    private var followingIdsJob: Job? = null
 
     fun observeProfile(userId: String) {
         profileJob?.cancel()
@@ -62,9 +67,21 @@ class ProfileViewModel(
                     if (throwable is CancellationException) throw throwable
                     _uiState.update { it.copy(isLoading = false, user = null, errorMessage = throwable.message ?: "Не вдалося завантажити профіль") }
                 }
-                .collect { user ->
-                    _uiState.update { it.copy(isLoading = false, user = user, errorMessage = if (user == null) "Профіль не знайдено" else null) }
-                    user?.let { loadStats(it.id, it.role) }
+                .collect { observedUser ->
+                    _uiState.update { state ->
+                        val user = if (
+                            observedUser != null &&
+                            state.user?.id == observedUser.id &&
+                            state.user.isVerified &&
+                            !observedUser.isVerified
+                        ) {
+                            observedUser.copy(isVerified = true, verifiedAt = state.user.verifiedAt)
+                        } else {
+                            observedUser
+                        }
+                        state.copy(isLoading = false, user = user, errorMessage = if (user == null) "Профіль не знайдено" else null)
+                    }
+                    observedUser?.let { loadStats(it.id, it.role) }
                 }
         }
     }
@@ -82,6 +99,20 @@ class ProfileViewModel(
                     val following = if (user != null) firestoreRepository.isFollowing(currentUserId, targetUserId) else false
                     _uiState.update { it.copy(isLoading = false, publicUser = user, isFollowing = following) }
                     user?.let { loadStats(it.id, it.role) }
+                }
+        }
+    }
+
+    fun observeFollowingIds(userId: String) {
+        followingIdsJob?.cancel()
+        followingIdsJob = viewModelScope.launch {
+            firestoreRepository.observeFollowingIds(userId)
+                .catch { throwable ->
+                    if (throwable is CancellationException) throw throwable
+                    _uiState.update { it.copy(followingIds = emptySet()) }
+                }
+                .collect { followingIds ->
+                    _uiState.update { it.copy(followingIds = followingIds) }
                 }
         }
     }
@@ -125,17 +156,18 @@ class ProfileViewModel(
         }
     }
 
-    fun verifyVolunteerDemo(userId: String) {
+    fun verifyVolunteer(user: User) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
             val verifiedAt = System.currentTimeMillis()
-            runCatching { firestoreRepository.verifyVolunteerDemo(userId) }
+            val verifiedUser = user.copy(isVerified = true, verifiedAt = verifiedAt)
+            runCatching { firestoreRepository.verifyVolunteer(user.id) }
                 .onSuccess {
                     _uiState.update { state ->
                         state.copy(
                             isLoading = false,
-                            user = state.user?.let { if (it.id == userId) it.copy(isVerified = true, verifiedAt = verifiedAt) else it },
-                            publicUser = state.publicUser?.let { if (it.id == userId) it.copy(isVerified = true, verifiedAt = verifiedAt) else it },
+                            user = if (state.user?.id == user.id || state.user == null) verifiedUser else state.user,
+                            publicUser = state.publicUser?.let { if (it.id == user.id) verifiedUser else it },
                             successMessage = "Волонтера верифіковано"
                         )
                     }
@@ -176,6 +208,60 @@ class ProfileViewModel(
         }
     }
 
+    fun loadFollowers(userId: String) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isFollowListLoading = true,
+                    followListTitle = "Підписники",
+                    followListUsers = emptyList(),
+                    errorMessage = null
+                )
+            }
+            runCatching { firestoreRepository.getFollowers(userId) }
+                .onSuccess { users ->
+                    _uiState.update { it.copy(isFollowListLoading = false, followListUsers = users) }
+                }
+                .onFailure { throwable ->
+                    _uiState.update {
+                        it.copy(
+                            isFollowListLoading = false,
+                            errorMessage = throwable.message ?: "Не вдалося завантажити підписників"
+                        )
+                    }
+                }
+        }
+    }
+
+    fun loadFollowing(userId: String) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isFollowListLoading = true,
+                    followListTitle = "Підписки",
+                    followListUsers = emptyList(),
+                    errorMessage = null
+                )
+            }
+            runCatching { firestoreRepository.getFollowing(userId) }
+                .onSuccess { users ->
+                    _uiState.update { it.copy(isFollowListLoading = false, followListUsers = users) }
+                }
+                .onFailure { throwable ->
+                    _uiState.update {
+                        it.copy(
+                            isFollowListLoading = false,
+                            errorMessage = throwable.message ?: "Не вдалося завантажити підписки"
+                        )
+                    }
+                }
+        }
+    }
+
+    fun clearFollowList() {
+        _uiState.update { it.copy(followListTitle = null, followListUsers = emptyList(), isFollowListLoading = false) }
+    }
+
     fun clearSearch() {
         _uiState.update { it.copy(searchResults = emptyList()) }
     }
@@ -194,6 +280,7 @@ class ProfileViewModel(
     fun signOut() {
         profileJob?.cancel()
         publicProfileJob?.cancel()
+        followingIdsJob?.cancel()
         authRepository.signOut()
         _uiState.value = ProfileUiState()
     }
@@ -201,6 +288,7 @@ class ProfileViewModel(
     fun clearSessionData() {
         profileJob?.cancel()
         publicProfileJob?.cancel()
+        followingIdsJob?.cancel()
         _uiState.value = ProfileUiState()
     }
 

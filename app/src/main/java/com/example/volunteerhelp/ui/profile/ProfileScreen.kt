@@ -3,29 +3,39 @@ package com.example.volunteerhelp.ui.profile
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.volunteerhelp.model.ProfileStats
 import com.example.volunteerhelp.model.User
 import com.example.volunteerhelp.model.UserRole
@@ -35,11 +45,9 @@ import com.example.volunteerhelp.ui.components.InfoCard
 import com.example.volunteerhelp.ui.components.ModernSearchBar
 import com.example.volunteerhelp.ui.components.PrimaryButton
 import com.example.volunteerhelp.ui.components.ProfileHeader
-import com.example.volunteerhelp.ui.components.ProfileStatsGrid
 import com.example.volunteerhelp.ui.components.SecondaryButton
 import com.example.volunteerhelp.ui.components.UserAvatar
 import com.example.volunteerhelp.ui.components.VerifiedBadge
-import com.example.volunteerhelp.util.DateFormatter
 
 @Composable
 fun ProfileScreen(
@@ -49,39 +57,33 @@ fun ProfileScreen(
     errorMessage: String?,
     onEdit: () -> Unit,
     onVerify: () -> Unit,
+    onFollowersClick: () -> Unit,
+    onFollowingClick: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    val tabs = listOf("Активність", "Збори", "Звіти", "Статистика")
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 96.dp)
     ) {
         item {
-            ProfileHeader(user = user, isOwnProfile = true, isFollowing = false, onEdit = onEdit, onFollowToggle = {})
+            ProfileHeader(
+                user = user,
+                isOwnProfile = true,
+                isFollowing = false,
+                onEdit = onEdit,
+                onFollowToggle = {},
+                onFollowersClick = onFollowersClick,
+                onFollowingClick = onFollowingClick
+            )
         }
         item {
-            Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 errorMessage?.let { ErrorView(message = it) }
                 if (user.role == UserRole.VOLUNTEER.name && !user.isVerified) {
-                    InfoCard(
-                        title = "Верифікація волонтера",
-                        body = "У демо-версії фото не зберігається і не передається. Після вибору фото статус підтверджується імітаційно."
-                    )
-                    PrimaryButton(text = "Пройти demo-верифікацію", onClick = onVerify, isLoading = isLoading)
+                    VerificationPrompt(isLoading = isLoading, onVerify = onVerify)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    tabs.forEachIndexed { index, tab ->
-                        FilterChip(selected = selectedTab == index, onClick = { selectedTab = index }, label = { Text(tab) })
-                    }
-                }
-                when (selectedTab) {
-                    0 -> InfoCard("Остання активність", "Створено профіль ${DateFormatter.format(user.createdAt)}. Нові дії з'являтимуться тут.")
-                    1 -> ProfileStatsGrid(stats = stats, role = user.role)
-                    2 -> EmptyStateView("Звіти профілю", "Звіти показуються у стрічці та деталях зборів.")
-                    else -> ProfileStatsGrid(stats = stats, role = user.role)
-                }
+                ProfileImpactSummary(stats = stats, role = user.role)
                 SecondaryButton(text = "Вийти", onClick = onLogout)
             }
         }
@@ -97,6 +99,8 @@ fun PublicProfileScreen(
     isLoading: Boolean,
     errorMessage: String?,
     onFollowToggle: () -> Unit,
+    onFollowersClick: () -> Unit,
+    onFollowingClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (user == null) {
@@ -107,16 +111,124 @@ fun PublicProfileScreen(
     }
     LazyColumn(modifier = modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
         item {
-            ProfileHeader(user = user, isOwnProfile = user.id == currentUser.id, isFollowing = isFollowing, onEdit = {}, onFollowToggle = onFollowToggle)
+            ProfileHeader(
+                user = user,
+                isOwnProfile = user.id == currentUser.id,
+                isFollowing = isFollowing,
+                onEdit = {},
+                onFollowToggle = onFollowToggle,
+                onFollowersClick = onFollowersClick,
+                onFollowingClick = onFollowingClick
+            )
         }
         item {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 errorMessage?.let { ErrorView(message = it) }
-                ProfileStatsGrid(stats = stats, role = user.role)
-                InfoCard("Публічний профіль", "Тут видно соціальну інформацію, статистику та статус волонтера.")
+                ProfileImpactSummary(stats = stats, role = user.role)
             }
         }
     }
+}
+
+@Composable
+private fun VerificationPrompt(isLoading: Boolean, onVerify: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Підтвердьте профіль", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Після верифікації біля профілю з'явиться позначка, а створення зборів стане доступним.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            PrimaryButton(text = "Пройти верифікацію", onClick = onVerify, isLoading = isLoading)
+        }
+    }
+}
+
+@Composable
+private fun ProfileImpactSummary(stats: ProfileStats, role: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(
+                text = if (role == UserRole.VOLUNTEER.name) "Волонтерська активність" else "Добрі справи",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxWidth()) {
+                CompactMetric("Збори", stats.totalCampaigns.toString(), Modifier.weight(1f))
+                CompactMetric("Звіти", stats.reportsCount.toString(), Modifier.weight(1f))
+                CompactMetric(
+                    if (role == UserRole.DONOR.name) "Допомог" else "Підтверджень",
+                    (stats.approvedHelpCount + stats.approvedHelpRequestsCount).toString(),
+                    Modifier.weight(1f)
+                )
+            }
+            Text(
+                text = if (role == UserRole.DONOR.name) {
+                    "${stats.title.ifBlank { "Новачок допомоги" }} · ${stats.level.ifBlank { "Рейтинг ${stats.rating}" }}"
+                } else {
+                    "Зібрано ${stats.totalRaisedAmount.toInt()} грн · активних зборів ${stats.activeCampaigns}"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+fun FollowListDialog(
+    title: String,
+    users: List<User>,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onOpenProfile: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            when {
+                isLoading -> Column(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                }
+                users.isEmpty() -> EmptyStateView(title, "Список порожній.")
+                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(users, key = { it.id }) { user ->
+                        Card(onClick = { onOpenProfile(user.id) }, modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                UserAvatar(user.avatarUrl, user.name)
+                                Column(Modifier.weight(1f)) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                        Text(user.name, style = MaterialTheme.typography.titleMedium)
+                                        VerifiedBadge(user.role == UserRole.VOLUNTEER.name && user.isVerified)
+                                    }
+                                    Text(user.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: user.email, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Закрити") } }
+    )
 }
 
 @Composable
@@ -137,18 +249,61 @@ fun EditProfileScreen(
     var localError by remember { mutableStateOf<String?>(null) }
     val avatarLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { avatarUri = it }
     val coverLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { coverUri = it }
+    val coverPreview: Any? = coverUri ?: user.coverImageUrl
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Редагувати профіль", style = MaterialTheme.typography.headlineSmall)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(132.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (coverPreview != null) {
+                        AsyncImage(
+                            model = coverPreview,
+                            contentDescription = "Шапка профілю",
+                            modifier = Modifier.matchParentSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text("Шапка профілю", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    UserAvatar(avatarUri?.toString() ?: user.avatarUrl, user.name, Modifier.size(72.dp))
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Фото профілю", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            when {
+                                avatarUri != null && coverUri != null -> "Нове фото і шапку обрано"
+                                avatarUri != null -> "Нове фото обрано"
+                                coverUri != null -> "Нову шапку обрано"
+                                else -> "Поточний вигляд профілю"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SecondaryButton(text = "Обрати фото", onClick = { avatarLauncher.launch("image/*") }, modifier = Modifier.weight(1f))
+                    SecondaryButton(text = "Обрати шапку", onClick = { coverLauncher.launch("image/*") }, modifier = Modifier.weight(1f))
+                }
+            }
+        }
         OutlinedTextField(value = name, onValueChange = { name = it; localError = null }, label = { Text("Ім'я") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = username, onValueChange = { username = it.removePrefix("@"); localError = null }, label = { Text("Нікнейм") }, prefix = { Text("@") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = bio, onValueChange = { bio = it.take(160); localError = null }, label = { Text("Bio") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
         OutlinedTextField(value = city, onValueChange = { city = it }, label = { Text("Місто") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = region, onValueChange = { region = it }, label = { Text("Область") }, modifier = Modifier.fillMaxWidth())
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SecondaryButton(text = "Avatar", onClick = { avatarLauncher.launch("image/*") }, modifier = Modifier.weight(1f))
-            SecondaryButton(text = "Cover", onClick = { coverLauncher.launch("image/*") }, modifier = Modifier.weight(1f))
-        }
         localError?.let { ErrorView(message = it) }
         errorMessage?.let { ErrorView(message = it) }
         PrimaryButton(
@@ -214,12 +369,20 @@ fun VolunteerVerificationScreen(
     var pickedUri by remember { mutableStateOf<Uri?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { pickedUri = it }
     Column(modifier = modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Demo-верифікація волонтера", style = MaterialTheme.typography.headlineSmall)
-        InfoCard("Без передачі документів", "У демо-версії фото не зберігається і не передається. Після вибору фото статус верифікації підтверджується імітаційно.")
+        Text("Верифікація волонтера", style = MaterialTheme.typography.headlineSmall)
+        InfoCard("Фото для підтвердження", "Оберіть фото документа або посвідчення. Після підтвердження акаунт отримає статус верифікованого.")
         if (user.isVerified) {
-            InfoCard("Верифіковано", "Ваш профіль уже має синю галочку.")
+            InfoCard("Верифіковано", "Ваш профіль уже підтверджено.")
         } else {
-            SecondaryButton(text = if (pickedUri == null) "Обрати фото паспорта" else "Фото обрано локально", onClick = { launcher.launch("image/*") })
+            SecondaryButton(text = if (pickedUri == null) "Обрати фото" else "Змінити фото", onClick = { launcher.launch("image/*") })
+            pickedUri?.let {
+                AsyncImage(
+                    model = it,
+                    contentDescription = "Фото для верифікації",
+                    modifier = Modifier.fillMaxWidth().height(240.dp),
+                    contentScale = ContentScale.Crop
+                )
+            }
             errorMessage?.let { ErrorView(message = it) }
             PrimaryButton(text = "Підтвердити верифікацію", enabled = pickedUri != null, isLoading = isLoading, onClick = onVerify)
         }

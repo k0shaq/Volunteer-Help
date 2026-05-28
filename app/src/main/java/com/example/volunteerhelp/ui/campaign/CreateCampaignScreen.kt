@@ -46,7 +46,7 @@ fun CreateCampaignScreen(
 ) {
     if (!currentUser.isVerified) {
         Column(modifier = modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            EmptyStateView("Потрібна верифікація", "Спочатку потрібно пройти demo-верифікацію волонтера, після цього створення зборів стане доступним.")
+            EmptyStateView("Потрібна верифікація", "Спочатку підтвердьте профіль волонтера, після цього створення зборів стане доступним.")
             PrimaryButton(text = "Перейти до верифікації", onClick = onVerifyClick)
         }
         return

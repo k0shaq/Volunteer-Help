@@ -31,8 +31,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,8 +73,9 @@ fun VerifiedBadge(isVerified: Boolean, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier, shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+fun StatCard(label: String, value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    val cardModifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
+    Card(modifier = cardModifier, shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(text = value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(text = label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -105,7 +104,7 @@ fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)?
 
 @Composable
 fun InfoCard(title: String, body: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))) {
+    Card(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(text = body, style = MaterialTheme.typography.bodyMedium)
@@ -143,6 +142,7 @@ fun FeedFilterBar(selected: CampaignFilter, onSelected: (CampaignFilter) -> Unit
         CampaignFilter.FINANCIAL to "Фінансова",
         CampaignFilter.MATERIAL to "Матеріальна",
         CampaignFilter.MY_REGION to "Мій регіон",
+        CampaignFilter.FOLLOWING to "Стежу",
         CampaignFilter.ALMOST_FUNDED to "Майже зібрано",
         CampaignFilter.COMPLETED to "Завершені"
     )
@@ -211,9 +211,9 @@ fun CampaignCard(campaign: Campaign, onClick: () -> Unit, modifier: Modifier = M
 }
 
 @Composable
-fun ReportCard(report: Report, onOpenCampaign: (String) -> Unit, modifier: Modifier = Modifier) {
+fun ReportCard(report: Report, onOpenCampaign: (String) -> Unit, modifier: Modifier = Modifier, showCampaignLink: Boolean = true) {
     Card(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(2.dp)) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 UserAvatar(report.volunteerAvatarUrl, report.volunteerName, Modifier.size(42.dp))
                 Column(Modifier.weight(1f)) {
@@ -223,38 +223,65 @@ fun ReportCard(report: Report, onOpenCampaign: (String) -> Unit, modifier: Modif
                     }
                     Text(text = report.volunteerUsername.takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                Text(text = DateFormatter.format(report.createdAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(8.dp),
+                modifier = if (showCampaignLink) {
+                    Modifier.fillMaxWidth().clickable { onOpenCampaign(report.campaignId) }
+                } else {
+                    Modifier.fillMaxWidth()
+                }
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(text = "Звіт про збір", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = report.campaignTitle.ifBlank { "Відкрити збір" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
             }
             if (!report.imageUrl.isNullOrBlank()) {
                 AsyncImage(model = report.imageUrl, contentDescription = "Звіт", modifier = Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
             }
-            Text(text = report.description, style = MaterialTheme.typography.bodyLarge)
-            Text(text = "Звіт по збору: ${report.campaignTitle}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { onOpenCampaign(report.campaignId) })
-            Text(text = DateFormatter.format(report.createdAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = report.description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
 
 @Composable
-fun ProfileHeader(user: User, isOwnProfile: Boolean, isFollowing: Boolean, onEdit: () -> Unit, onFollowToggle: () -> Unit) {
-    Column {
-        Box(modifier = Modifier.fillMaxWidth().height(150.dp).background(Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primary, Color(0xFF60A5FA)))), contentAlignment = Alignment.BottomStart) {
+fun ProfileHeader(
+    user: User,
+    isOwnProfile: Boolean,
+    isFollowing: Boolean,
+    onEdit: () -> Unit,
+    onFollowToggle: () -> Unit,
+    onFollowersClick: () -> Unit = {},
+    onFollowingClick: () -> Unit = {}
+) {
+    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+        Box(modifier = Modifier.fillMaxWidth().height(168.dp).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.BottomStart) {
             if (!user.coverImageUrl.isNullOrBlank()) {
                 AsyncImage(model = user.coverImageUrl, contentDescription = "Cover", modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
             }
-            UserAvatar(user.avatarUrl, user.name, Modifier.padding(16.dp).size(86.dp))
+            UserAvatar(user.avatarUrl, user.name, Modifier.padding(16.dp).size(88.dp))
         }
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(text = user.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 VerifiedBadge(user.role == UserRole.VOLUNTEER.name && user.isVerified)
             }
-            Text(text = user.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: user.email, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(text = if (user.role == UserRole.VOLUNTEER.name) "Волонтер" else "Благодійник", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = user.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: user.email, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "·")
+                Text(text = if (user.role == UserRole.VOLUNTEER.name) "Волонтер" else "Благодійник", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            }
             if (user.bio.isNotBlank()) Text(text = user.bio)
-            Text(text = listOf(user.city, user.region).filter { it.isNotBlank() }.joinToString(", ").ifBlank { "Локацію не вказано" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val location = listOf(user.city, user.region).filter { it.isNotBlank() }.joinToString(", ")
+            if (location.isNotBlank()) {
+                Text(text = location, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard("Підписники", user.followersCount.toString(), Modifier.weight(1f))
-                StatCard("Підписки", user.followingCount.toString(), Modifier.weight(1f))
+                StatCard("Підписники", user.followersCount.toString(), Modifier.weight(1f), onFollowersClick)
+                StatCard("Підписки", user.followingCount.toString(), Modifier.weight(1f), onFollowingClick)
                 StatCard("Рейтинг", user.rating.toString(), Modifier.weight(1f))
             }
             if (isOwnProfile) {

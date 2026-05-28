@@ -28,6 +28,7 @@ import com.example.volunteerhelp.ui.campaign.CreateCampaignScreen
 import com.example.volunteerhelp.ui.help.HelpFormScreen
 import com.example.volunteerhelp.ui.main.MainScreen
 import com.example.volunteerhelp.ui.profile.EditProfileScreen
+import com.example.volunteerhelp.ui.profile.FollowListDialog
 import com.example.volunteerhelp.ui.profile.PublicProfileScreen
 import com.example.volunteerhelp.ui.profile.VolunteerVerificationScreen
 import com.example.volunteerhelp.ui.report.AddReportScreen
@@ -65,7 +66,8 @@ fun AppNavigation(
                 profileViewModel.clearSessionData()
                 reportViewModel.clearSessionData()
                 navController.navigate(Screen.Login.route) {
-                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                    val currentRoute = navController.currentBackStackEntry?.destination?.route ?: Screen.Splash.route
+                    popUpTo(currentRoute) { inclusive = true }
                     launchSingleTop = true
                 }
             }
@@ -75,7 +77,8 @@ fun AppNavigation(
                 profileViewModel.clearSessionData()
                 reportViewModel.clearSessionData()
                 navController.navigate(Screen.Register.route) {
-                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                    val currentRoute = navController.currentBackStackEntry?.destination?.route ?: Screen.Splash.route
+                    popUpTo(currentRoute) { inclusive = true }
                     launchSingleTop = true
                 }
             }
@@ -84,7 +87,8 @@ fun AppNavigation(
                 reportViewModel.observeFeedReports()
                 profileViewModel.observeProfile(state.user.id)
                 navController.navigate(Screen.Main.route) {
-                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                    val currentRoute = navController.currentBackStackEntry?.destination?.route ?: Screen.Splash.route
+                    popUpTo(currentRoute) { inclusive = true }
                     launchSingleTop = true
                 }
             }
@@ -97,6 +101,19 @@ fun AppNavigation(
             helpState.successMessage,
             reportState.successMessage
         ).filterNotNull().firstOrNull()?.let { snackbarHostState.showSnackbar(it) }
+    }
+
+    profileState.followListTitle?.let { title ->
+        FollowListDialog(
+            title = title,
+            users = profileState.followListUsers,
+            isLoading = profileState.isFollowListLoading,
+            onDismiss = profileViewModel::clearFollowList,
+            onOpenProfile = { userId ->
+                profileViewModel.clearFollowList()
+                navController.navigate(Screen.PublicProfile.createRoute(userId))
+            }
+        )
     }
 
     Scaffold(snackbarHost = { SnackbarHost(hostState = snackbarHostState) }) { innerPadding ->
@@ -112,7 +129,12 @@ fun AppNavigation(
                 LoginScreen(
                     state = loginState,
                     onLoginClick = { email, password -> authViewModel.login(email, password) },
-                    onNavigateToRegister = { navController.navigate(Screen.Register.route) }
+                    onNavigateToRegister = {
+                        navController.navigate(Screen.Register.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
             composable(Screen.Register.route) {
@@ -125,7 +147,10 @@ fun AppNavigation(
                     onRegisterClick = { name, username, email, password, role -> authViewModel.register(name, username, email, password, role) },
                     onNavigateToLogin = {
                         authViewModel.signOut()
-                        navController.navigate(Screen.Login.route)
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(Screen.Register.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
@@ -284,7 +309,7 @@ fun AppNavigation(
                         user = currentUser,
                         isLoading = profileState.isLoading,
                         errorMessage = profileState.errorMessage,
-                        onVerify = { profileViewModel.verifyVolunteerDemo(currentUser.id) }
+                        onVerify = { profileViewModel.verifyVolunteer(currentUser) }
                     )
                     LaunchedEffect(profileState.successMessage) {
                         if (profileState.successMessage != null) {
@@ -324,7 +349,9 @@ fun AppNavigation(
                                     profileViewModel.followUser(currentUser.id, publicUser.id)
                                 }
                             }
-                        }
+                        },
+                        onFollowersClick = { profileViewModel.loadFollowers(targetUserId) },
+                        onFollowingClick = { profileViewModel.loadFollowing(targetUserId) }
                     )
                 } else {
                     SplashScreen()

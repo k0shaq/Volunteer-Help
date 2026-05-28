@@ -31,6 +31,7 @@ fun CampaignFeedScreen(
     filter: CampaignFilter,
     searchQuery: String,
     categoryFilter: String,
+    followedUserIds: Set<String>,
     errorMessage: String?,
     onCampaignClick: (String) -> Unit,
     onFilterSelected: (CampaignFilter) -> Unit,
@@ -38,9 +39,16 @@ fun CampaignFeedScreen(
     onCategorySelected: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val visibleReports = if (filter == CampaignFilter.FOLLOWING) {
+        reports.filter { it.volunteerId in followedUserIds }
+    } else {
+        reports
+    }
     val items = buildList {
         if (filter != CampaignFilter.REPORTS) addAll(campaigns.map { FeedItem.CampaignItem(it) })
-        if (filter in listOf(CampaignFilter.ALL, CampaignFilter.REPORTS)) addAll(reports.map { FeedItem.ReportItem(it) })
+        if (filter in listOf(CampaignFilter.ALL, CampaignFilter.REPORTS, CampaignFilter.FOLLOWING)) {
+            addAll(visibleReports.map { FeedItem.ReportItem(it) })
+        }
     }.sortedByDescending { it.sortTime }
 
     Column(
@@ -59,7 +67,7 @@ fun CampaignFeedScreen(
         }
         errorMessage?.let { ErrorView(message = it) }
         if (items.isEmpty()) {
-            EmptyStateView(title = "Стрічка поки тиха", message = "Тут з'являться збори, звіти та оновлення волонтерів.")
+            EmptyStateView(title = "Стрічка поки тиха", message = "Поки немає дописів за вибраними фільтрами.")
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),

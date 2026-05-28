@@ -77,12 +77,17 @@ fun MainScreen(
         campaignViewModel.observeFeedCampaigns()
         reportViewModel.observeFeedReports()
         profileViewModel.observeProfile(currentUser.id)
+        profileViewModel.observeFollowingIds(currentUser.id)
         if (currentUser.role == UserRole.VOLUNTEER.name) {
             campaignViewModel.observeMyCampaigns(currentUser.id)
             helpRequestViewModel.observePendingRequests(currentUser.id)
         } else {
             helpRequestViewModel.observeHistory(currentUser.id)
         }
+    }
+
+    LaunchedEffect(currentUser.region, profileState.followingIds) {
+        campaignViewModel.setFeedContext(currentUser.region, profileState.followingIds)
     }
 
     if (showVerifyDialog) {
@@ -135,6 +140,7 @@ fun MainScreen(
                 filter = campaignState.filter,
                 searchQuery = campaignState.searchQuery,
                 categoryFilter = campaignState.categoryFilter,
+                followedUserIds = profileState.followingIds,
                 errorMessage = campaignState.errorMessage,
                 modifier = Modifier.padding(innerPadding),
                 onCampaignClick = onCampaignClick,
@@ -169,6 +175,8 @@ fun MainScreen(
                 modifier = Modifier.padding(innerPadding),
                 onEdit = onEditProfile,
                 onVerify = onVerifyClick,
+                onFollowersClick = { profileViewModel.loadFollowers(currentProfile.id) },
+                onFollowingClick = { profileViewModel.loadFollowing(currentProfile.id) },
                 onLogout = onLogout
             )
         }

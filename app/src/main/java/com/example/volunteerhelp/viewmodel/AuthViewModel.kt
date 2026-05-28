@@ -87,12 +87,15 @@ class AuthViewModel(
             _registerState.value = AuthFormState(isLoading = true)
             runCatching {
                 val cleanUsername = username.trim().removePrefix("@")
-                validateUsername(cleanUsername)
+                validateUsernameFormat(cleanUsername)
                 val currentUser = authRepository.getCurrentUser()
                 val firebaseUser = if (currentUser != null && currentUser.email.equals(email.trim(), ignoreCase = true)) {
                     currentUser
                 } else {
                     authRepository.register(email.trim(), password)
+                }
+                if (!firestoreRepository.isUsernameAvailable(cleanUsername, firebaseUser.uid)) {
+                    throw IllegalStateException("Такий нікнейм уже використовується")
                 }
                 val user = User(
                     id = firebaseUser.uid,
@@ -131,10 +134,14 @@ class AuthViewModel(
     }
 
     private suspend fun validateUsername(username: String) {
-        require(username.length in 3..20) { "Нікнейм має містити від 3 до 20 символів" }
-        require(username.matches(Regex("^[A-Za-z0-9._]+$"))) { "Нікнейм може містити латинські літери, цифри, крапку та _" }
+        validateUsernameFormat(username)
         if (!firestoreRepository.isUsernameAvailable(username)) {
             throw IllegalStateException("Такий нікнейм уже використовується")
         }
+    }
+
+    private fun validateUsernameFormat(username: String) {
+        require(username.length in 3..20) { "Нікнейм має містити від 3 до 20 символів" }
+        require(username.matches(Regex("^[A-Za-z0-9._]+$"))) { "Нікнейм може містити латинські літери, цифри, крапку та _" }
     }
 }

@@ -29,6 +29,7 @@ enum class CampaignFilter {
     FINANCIAL,
     MATERIAL,
     MY_REGION,
+    FOLLOWING,
     ALMOST_FUNDED,
     COMPLETED
 }
@@ -57,6 +58,8 @@ class CampaignViewModel(
     private var myCampaignsJob: Job? = null
     private var campaignDetailsJob: Job? = null
     private var allActiveCampaigns: List<Campaign> = emptyList()
+    private var currentUserRegion: String = ""
+    private var followedUserIds: Set<String> = emptySet()
 
     fun observeActiveCampaigns() {
         observeFeedCampaigns()
@@ -97,12 +100,17 @@ class CampaignViewModel(
         applyFilter(_uiState.value.filter, _uiState.value.searchQuery, category)
     }
 
+    fun setFeedContext(region: String, followingIds: Set<String>) {
+        currentUserRegion = region.trim()
+        followedUserIds = followingIds
+        applyFilter(_uiState.value.filter)
+    }
+
     private fun applyFilter(filter: CampaignFilter) {
         applyFilter(filter, _uiState.value.searchQuery, _uiState.value.categoryFilter)
     }
 
     private fun applyFilter(filter: CampaignFilter, query: String, category: String) {
-        val currentUser = _uiState.value
         val normalized = query.trim().lowercase()
         val filtered = allActiveCampaigns
             .filter { campaign ->
@@ -118,7 +126,8 @@ class CampaignViewModel(
                     CampaignFilter.ALL, CampaignFilter.CAMPAIGNS, CampaignFilter.REPORTS -> true
                     CampaignFilter.FINANCIAL -> it.type == CampaignType.FINANCIAL.name
                     CampaignFilter.MATERIAL -> it.type == CampaignType.MATERIAL.name
-                    CampaignFilter.MY_REGION -> currentUser.activeCampaigns.firstOrNull()?.region.orEmpty().let { region -> region.isBlank() || it.region == region }
+                    CampaignFilter.MY_REGION -> currentUserRegion.isBlank() || it.region.equals(currentUserRegion, ignoreCase = true)
+                    CampaignFilter.FOLLOWING -> it.volunteerId in followedUserIds
                     CampaignFilter.ALMOST_FUNDED -> it.targetAmount > 0 && it.currentAmount / it.targetAmount >= 0.8
                     CampaignFilter.COMPLETED -> it.status == CampaignStatus.COMPLETED.name || it.status == CampaignStatus.CLOSED.name
                 }
@@ -267,6 +276,8 @@ class CampaignViewModel(
         myCampaignsJob?.cancel()
         campaignDetailsJob?.cancel()
         allActiveCampaigns = emptyList()
+        currentUserRegion = ""
+        followedUserIds = emptySet()
         _uiState.value = CampaignUiState()
     }
 }

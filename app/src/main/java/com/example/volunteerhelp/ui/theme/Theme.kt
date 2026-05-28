@@ -7,19 +7,23 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
 private val DarkColorScheme = darkColorScheme(
-    primary = TealSecondaryDark,
-    secondary = TealAccentDark,
-    tertiary = TealPrimary,
+    primary = GraphitePrimaryDark,
+    secondary = GraphiteSecondaryDark,
+    tertiary = GraphiteAccentDark,
     background = BackgroundDark,
-    surface = SurfaceDark
+    surface = SurfaceDark,
+    surfaceVariant = SurfaceVariantDark,
+    primaryContainer = SurfaceVariantDark
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = TealPrimary,
-    secondary = TealSecondary,
-    tertiary = TealAccent,
+    primary = GraphitePrimary,
+    secondary = GraphiteSecondary,
+    tertiary = GraphiteAccent,
     background = BackgroundLight,
-    surface = SurfaceLight
+    surface = SurfaceLight,
+    surfaceVariant = SurfaceVariantLight,
+    primaryContainer = SurfaceVariantLight
 )
 
 @Composable
