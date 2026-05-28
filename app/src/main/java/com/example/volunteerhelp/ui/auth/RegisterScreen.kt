@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.example.volunteerhelp.model.UserRole
 import com.example.volunteerhelp.ui.components.ErrorView
 import com.example.volunteerhelp.ui.components.PrimaryButton
+import com.example.volunteerhelp.util.FormLimits
 import com.example.volunteerhelp.viewmodel.AuthFormState
 
 @Composable
@@ -127,7 +128,8 @@ fun RegisterScreen(
             onClick = {
                 when {
                     name.isBlank() -> localError = "Ім'я не може бути порожнім"
-                    username.length !in 3..20 -> localError = "Нікнейм має містити від 3 до 20 символів"
+                    name.length > FormLimits.NAME_MAX -> localError = "Ім'я має містити не більше ${FormLimits.NAME_MAX} символів"
+                    username.length !in FormLimits.USERNAME_MIN..FormLimits.USERNAME_MAX -> localError = "Нікнейм має містити від ${FormLimits.USERNAME_MIN} до ${FormLimits.USERNAME_MAX} символів"
                     !username.matches(Regex("^[A-Za-z0-9._]+$")) -> localError = "Нікнейм може містити латинські літери, цифри, крапку та _"
                     email.isBlank() -> localError = "Email не може бути порожнім"
                     password.length < 6 -> localError = "Пароль має містити щонайменше 6 символів"

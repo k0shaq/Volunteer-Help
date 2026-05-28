@@ -27,7 +27,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
-fun VolunteerHelpTheme(
+fun AidlyTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {

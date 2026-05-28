@@ -7,9 +7,13 @@ import com.example.volunteerhelp.data.AuthRepository
 import com.example.volunteerhelp.data.CloudinaryRepository
 import com.example.volunteerhelp.data.FirestoreRepository
 import com.example.volunteerhelp.data.ResultState
+import com.example.volunteerhelp.model.Campaign
 import com.example.volunteerhelp.model.ProfileStats
+import com.example.volunteerhelp.model.Report
 import com.example.volunteerhelp.model.User
 import com.example.volunteerhelp.model.UserRole
+import com.example.volunteerhelp.util.FormLimits
+import com.example.volunteerhelp.util.FormValidators
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +31,8 @@ data class ProfileUiState(
     val searchResults: List<User> = emptyList(),
     val followingIds: Set<String> = emptySet(),
     val followListUsers: List<User> = emptyList(),
+    val profileCampaigns: List<Campaign> = emptyList(),
+    val profileReports: List<Report> = emptyList(),
     val followListTitle: String? = null,
     val isFollowListLoading: Boolean = false,
     val stats: ProfileStats = ProfileStats(),
@@ -69,16 +75,7 @@ class ProfileViewModel(
                 }
                 .collect { observedUser ->
                     _uiState.update { state ->
-                        val user = if (
-                            observedUser != null &&
-                            state.user?.id == observedUser.id &&
-                            state.user.isVerified &&
-                            !observedUser.isVerified
-                        ) {
-                            observedUser.copy(isVerified = true, verifiedAt = state.user.verifiedAt)
-                        } else {
-                            observedUser
-                        }
+                        val user = observedUser
                         state.copy(isLoading = false, user = user, errorMessage = if (user == null) "Профіль не знайдено" else null)
                     }
                     observedUser?.let { loadStats(it.id, it.role) }
@@ -130,20 +127,24 @@ class ProfileViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
             runCatching {
-                require(name.isNotBlank()) { "Ім'я не може бути порожнім" }
+                FormValidators.validateName(name.trim())
                 val cleanUsername = username.trim().removePrefix("@")
-                require(cleanUsername.length in 3..20) { "Нікнейм має містити від 3 до 20 символів" }
-                require(cleanUsername.matches(Regex("^[A-Za-z0-9._]+$"))) { "Нікнейм може містити латинські літери, цифри, крапку та _" }
-                require(bio.length <= 160) { "Bio має бути до 160 символів" }
+                FormValidators.validateUsername(cleanUsername)
+                FormValidators.validateMax(bio.trim(), FormLimits.BIO_MAX, "Bio")
+                FormValidators.validateCity(city.trim())
+                require(region.isNotBlank()) { "Вкажіть область" }
                 val avatarUrl = uploadOrKeep(avatarUri, user.avatarUrl)
                 val coverUrl = uploadOrKeep(coverUri, user.coverImageUrl)
                 val updated = user.copy(
                     name = name.trim(),
+                    nameLowercase = name.trim().lowercase(),
                     username = cleanUsername,
                     usernameLowercase = cleanUsername.lowercase(),
                     bio = bio.trim(),
                     city = city.trim(),
+                    cityLowercase = city.trim().lowercase(),
                     region = region.trim(),
+                    regionLowercase = region.trim().lowercase(),
                     avatarUrl = avatarUrl,
                     coverImageUrl = coverUrl
                 )
@@ -159,15 +160,13 @@ class ProfileViewModel(
     fun verifyVolunteer(user: User) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
-            val verifiedAt = System.currentTimeMillis()
-            val verifiedUser = user.copy(isVerified = true, verifiedAt = verifiedAt)
             runCatching { firestoreRepository.verifyVolunteer(user.id) }
-                .onSuccess {
+                .onSuccess { savedUser ->
                     _uiState.update { state ->
                         state.copy(
                             isLoading = false,
-                            user = if (state.user?.id == user.id || state.user == null) verifiedUser else state.user,
-                            publicUser = state.publicUser?.let { if (it.id == user.id) verifiedUser else it },
+                            user = if (state.user?.id == user.id || state.user == null) savedUser else state.user,
+                            publicUser = state.publicUser?.let { if (it.id == user.id) savedUser else it },
                             successMessage = "Волонтера верифіковано"
                         )
                     }
@@ -269,7 +268,11 @@ class ProfileViewModel(
     fun loadStats(userId: String, role: String) {
         viewModelScope.launch {
             runCatching { firestoreRepository.getProfileStats(userId, role) }
-                .onSuccess { stats -> _uiState.update { it.copy(stats = stats) } }
+                .onSuccess { stats ->
+                    val campaigns = if (role == UserRole.VOLUNTEER.name) firestoreRepository.getVolunteerCampaigns(userId) else emptyList()
+                    val reports = if (role == UserRole.VOLUNTEER.name) firestoreRepository.getVolunteerReports(userId) else emptyList()
+                    _uiState.update { it.copy(stats = stats, profileCampaigns = campaigns, profileReports = reports) }
+                }
         }
     }
 

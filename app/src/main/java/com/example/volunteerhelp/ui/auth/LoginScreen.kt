@@ -38,7 +38,7 @@ fun LoginScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "VolunteerHelp", style = MaterialTheme.typography.headlineMedium)
+        Text(text = "Aidly", style = MaterialTheme.typography.headlineMedium)
         Text(text = "Увійдіть, щоб переглядати збори та координувати допомогу")
         OutlinedTextField(
             value = email,

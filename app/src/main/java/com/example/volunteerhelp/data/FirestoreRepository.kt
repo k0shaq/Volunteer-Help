@@ -13,6 +13,7 @@ import com.example.volunteerhelp.util.Constants
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -27,7 +28,16 @@ class FirestoreRepository(
     suspend fun createUser(user: User) {
         val usernameLower = user.usernameLowercase.ifBlank { normalizeUsername(user.username) }
         if (usernameLower.isBlank()) throw IllegalArgumentException("Нікнейм не може бути порожнім")
-        val userWithUsername = user.copy(username = user.username.trim(), usernameLowercase = usernameLower)
+        val userWithUsername = user.copy(
+            name = user.name.trim(),
+            nameLowercase = normalizePublicField(user.name),
+            username = user.username.trim(),
+            usernameLowercase = usernameLower,
+            city = user.city.trim(),
+            cityLowercase = normalizePublicField(user.city),
+            region = user.region.trim(),
+            regionLowercase = normalizePublicField(user.region)
+        )
         val userRef = firestore.collection(Constants.USERS_COLLECTION).document(user.id)
         val usernameRef = firestore.collection(Constants.USERNAMES_COLLECTION).document(usernameLower)
         firestore.runTransaction { transaction ->
@@ -62,11 +72,30 @@ class FirestoreRepository(
 
     suspend fun updateProfile(user: User, previousUsernameLowercase: String) {
         val newUsernameLower = normalizeUsername(user.username)
-        val updated = user.copy(username = user.username.trim(), usernameLowercase = newUsernameLower)
+        val updated = user.copy(
+            name = user.name.trim(),
+            nameLowercase = normalizePublicField(user.name),
+            username = user.username.trim(),
+            usernameLowercase = newUsernameLower,
+            city = user.city.trim(),
+            cityLowercase = normalizePublicField(user.city),
+            region = user.region.trim(),
+            regionLowercase = normalizePublicField(user.region)
+        )
         val userRef = firestore.collection(Constants.USERS_COLLECTION).document(user.id)
         firestore.runTransaction { transaction ->
-            val current = transaction.get(userRef).toObject(User::class.java)
+            val current = transaction.get(userRef).toUser()
                 ?: throw IllegalStateException("Профіль не знайдено")
+            val profileToSave = updated.copy(
+                isVerified = current.isVerified,
+                verifiedAt = current.verifiedAt,
+                rating = current.rating,
+                followersCount = current.followersCount,
+                followingCount = current.followingCount,
+                closedCampaignsCount = current.closedCampaignsCount,
+                totalHelpAmount = current.totalHelpAmount,
+                createdAt = current.createdAt
+            )
             val oldUsernameLower = previousUsernameLowercase.ifBlank { current.usernameLowercase }
             if (newUsernameLower.isBlank()) throw IllegalArgumentException("Нікнейм не може бути порожнім")
             if (oldUsernameLower != newUsernameLower) {
@@ -83,15 +112,24 @@ class FirestoreRepository(
                     mapOf("userId" to user.id, "username" to updated.username, "createdAt" to System.currentTimeMillis())
                 )
             }
-            transaction.set(userRef, updated)
+            transaction.set(userRef, profileToSave)
         }.await()
+        getUser(user.id)?.let { savedUser ->
+            runCatching { updateDenormalizedUserData(savedUser) }
+        }
     }
 
-    suspend fun verifyVolunteer(userId: String) {
+    suspend fun verifyVolunteer(userId: String): User {
         val verifiedAt = System.currentTimeMillis()
         firestore.collection(Constants.USERS_COLLECTION).document(userId)
             .set(mapOf("isVerified" to true, "verifiedAt" to verifiedAt), SetOptions.merge())
             .await()
+        val savedUser = getUser(userId) ?: throw IllegalStateException("Профіль не знайдено після верифікації")
+        if (!savedUser.isVerified) {
+            throw IllegalStateException("Не вдалося зберегти статус верифікації")
+        }
+        runCatching { updateDenormalizedUserData(savedUser) }
+        return savedUser
     }
 
     suspend fun isUsernameAvailable(username: String, currentUserId: String? = null): Boolean {
@@ -102,11 +140,32 @@ class FirestoreRepository(
     suspend fun searchUsers(query: String): List<User> {
         val normalized = query.trim().lowercase()
         if (normalized.isBlank()) return emptyList()
-        return firestore.collection(Constants.USERS_COLLECTION).get().await().documents
+        val fields = listOf("usernameLowercase", "nameLowercase", "cityLowercase", "regionLowercase")
+        val indexedResults = fields.flatMap { field ->
+            firestore.collection(Constants.USERS_COLLECTION)
+                .orderBy(field)
+                .startAt(normalized)
+                .endAt("$normalized\uf8ff")
+                .limit(Constants.USER_SEARCH_LIMIT)
+                .get()
+                .await()
+                .documents
+        }
+        val fallbackResults = firestore.collection(Constants.USERS_COLLECTION)
+            .limit(Constants.USER_SEARCH_FALLBACK_LIMIT)
+            .get()
+            .await()
+            .documents
+        return (indexedResults + fallbackResults)
+            .distinctBy { it.id }
             .mapNotNull { it.toUser() }
             .filter { user ->
-                listOf(user.name, user.username, user.usernameLowercase, user.email, user.city, user.region)
-                    .any { it.lowercase().contains(normalized) }
+                listOf(
+                    user.nameLowercase.ifBlank { user.name },
+                    user.usernameLowercase.ifBlank { user.username },
+                    user.cityLowercase.ifBlank { user.city },
+                    user.regionLowercase.ifBlank { user.region }
+                ).any { it.lowercase().contains(normalized) }
             }
             .sortedWith(compareByDescending<User> { it.isVerified }.thenBy { it.name.lowercase() })
     }
@@ -240,6 +299,26 @@ class FirestoreRepository(
         awaitClose { listener.remove() }
     }
 
+    suspend fun getVolunteerCampaigns(volunteerId: String): List<Campaign> {
+        return firestore.collection(Constants.CAMPAIGNS_COLLECTION)
+            .whereEqualTo("volunteerId", volunteerId)
+            .get()
+            .await()
+            .documents
+            .mapNotNull { it.toCampaign() }
+            .sortedByDescending { it.createdAt }
+    }
+
+    suspend fun getVolunteerReports(volunteerId: String): List<Report> {
+        return firestore.collection(Constants.REPORTS_COLLECTION)
+            .whereEqualTo("volunteerId", volunteerId)
+            .get()
+            .await()
+            .documents
+            .mapNotNull { it.toReport() }
+            .sortedByDescending { it.createdAt }
+    }
+
     suspend fun closeCampaign(campaignId: String, volunteerId: String) {
         val campaignRef = firestore.collection(Constants.CAMPAIGNS_COLLECTION).document(campaignId)
         val userRef = firestore.collection(Constants.USERS_COLLECTION).document(volunteerId)
@@ -247,6 +326,7 @@ class FirestoreRepository(
             val campaign = transaction.get(campaignRef).toObject(Campaign::class.java)
                 ?: throw IllegalStateException("Збір не знайдено")
             if (campaign.volunteerId != volunteerId) throw IllegalStateException("Недостатньо прав для закриття збору")
+            if (!CampaignStatus.canBeClosed(campaign.status)) throw IllegalStateException("Цей збір уже не можна закрити")
             transaction.update(campaignRef, "status", CampaignStatus.CLOSED.name)
             transaction.update(userRef, "closedCampaignsCount", FieldValue.increment(1))
         }.await()
@@ -297,7 +377,16 @@ class FirestoreRepository(
             transaction.update(helpRequestRef, "status", HelpRequestStatus.APPROVED.name)
             if (helpRequest.type == CampaignType.FINANCIAL.name) {
                 val newAmount = campaign.currentAmount + helpRequest.amount
-                val newStatus = if (campaign.targetAmount > 0 && newAmount >= campaign.targetAmount) CampaignStatus.COMPLETED.name else campaign.status
+                val currentStatus = CampaignStatus.fromStorage(campaign.status)
+                val newStatus = if (
+                    currentStatus == CampaignStatus.ACTIVE &&
+                    campaign.targetAmount > 0 &&
+                    newAmount >= campaign.targetAmount
+                ) {
+                    CampaignStatus.GOAL_REACHED.name
+                } else {
+                    currentStatus.name
+                }
                 transaction.update(campaignRef, mapOf("currentAmount" to newAmount, "status" to newStatus))
                 transaction.update(donorRef, "totalHelpAmount", FieldValue.increment(helpRequest.amount))
             } else {
@@ -324,8 +413,9 @@ class FirestoreRepository(
             val campaign = transaction.get(campaignRef).toObject(Campaign::class.java)
                 ?: throw IllegalStateException("Збір не знайдено")
             if (campaign.volunteerId != report.volunteerId) throw IllegalStateException("Недостатньо прав для додавання звіту")
+            if (!CampaignStatus.canReceiveReport(campaign.status)) throw IllegalStateException("Звіт можна додати після закриття збору або досягнення цілі")
             transaction.set(reportRef, report.copy(campaignTitle = report.campaignTitle.ifBlank { campaign.title }))
-            transaction.update(campaignRef, "status", CampaignStatus.CLOSED.name)
+            transaction.update(campaignRef, "status", CampaignStatus.REPORTED.name)
         }.await()
     }
 
@@ -344,6 +434,8 @@ class FirestoreRepository(
 
     fun observeAllReports(): Flow<List<Report>> = callbackFlow {
         val listener = firestore.collection(Constants.REPORTS_COLLECTION)
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .limit(Constants.FEED_LIMIT)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)
@@ -363,9 +455,9 @@ class FirestoreRepository(
         val title = donorTitle(rating)
         return ProfileStats(
             totalCampaigns = campaigns.size,
-            activeCampaigns = campaigns.count { it.status == CampaignStatus.ACTIVE.name },
-            completedCampaigns = campaigns.count { it.status == CampaignStatus.COMPLETED.name },
-            closedCampaigns = campaigns.count { it.status == CampaignStatus.CLOSED.name },
+            activeCampaigns = campaigns.count { CampaignStatus.fromStorage(it.status) == CampaignStatus.ACTIVE },
+            completedCampaigns = campaigns.count { CampaignStatus.fromStorage(it.status) == CampaignStatus.GOAL_REACHED },
+            closedCampaigns = campaigns.count { CampaignStatus.fromStorage(it.status) in listOf(CampaignStatus.CLOSED, CampaignStatus.REPORTED) },
             reportsCount = reports.size,
             totalRaisedAmount = campaigns.sumOf { it.currentAmount },
             pendingHelpRequestsCount = volunteerRequests.count { it.status == HelpRequestStatus.PENDING.name },
@@ -382,9 +474,13 @@ class FirestoreRepository(
 
     private fun observeCampaigns(activeOnly: Boolean): Flow<List<Campaign>> = callbackFlow {
         val query = if (activeOnly) {
-            firestore.collection(Constants.CAMPAIGNS_COLLECTION).whereEqualTo("status", CampaignStatus.ACTIVE.name)
+            firestore.collection(Constants.CAMPAIGNS_COLLECTION)
+                .whereEqualTo("status", CampaignStatus.ACTIVE.name)
+                .limit(Constants.FEED_LIMIT)
         } else {
             firestore.collection(Constants.CAMPAIGNS_COLLECTION)
+                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .limit(Constants.FEED_LIMIT)
         }
         val listener = query.addSnapshotListener { snapshot, error ->
             if (error != null) {
@@ -409,7 +505,11 @@ class FirestoreRepository(
     }
 
     private fun calculatePoints(type: String, amount: Double): Int {
-        return if (type == CampaignType.FINANCIAL.name) maxOf(1, amount.toInt() / 10) else 10
+        return if (type == CampaignType.FINANCIAL.name) {
+            if (amount <= 0.0) 0 else maxOf(1, (amount / 100).toInt())
+        } else {
+            10
+        }
     }
 
     private suspend fun approvedPointsForDonor(userId: String): Int {
@@ -432,7 +532,75 @@ class FirestoreRepository(
 
     private fun normalizeUsername(username: String): String = username.trim().removePrefix("@").lowercase()
 
-    private fun DocumentSnapshot.toUser(): User? = toObject(User::class.java)
+    private fun normalizePublicField(value: String): String = value.trim().lowercase()
+
+    private suspend fun updateDenormalizedUserData(user: User) {
+        val volunteerCampaigns = firestore.collection(Constants.CAMPAIGNS_COLLECTION)
+            .whereEqualTo("volunteerId", user.id)
+            .limit(Constants.DENORMALIZED_UPDATE_LIMIT)
+            .get()
+            .await()
+            .documents
+        val volunteerReports = firestore.collection(Constants.REPORTS_COLLECTION)
+            .whereEqualTo("volunteerId", user.id)
+            .limit(Constants.DENORMALIZED_UPDATE_LIMIT)
+            .get()
+            .await()
+            .documents
+        val donorHelpRequests = firestore.collection(Constants.HELP_REQUESTS_COLLECTION)
+            .whereEqualTo("donorId", user.id)
+            .limit(Constants.DENORMALIZED_UPDATE_LIMIT)
+            .get()
+            .await()
+            .documents
+
+        val batch = firestore.batch()
+        volunteerCampaigns.forEach { doc ->
+            batch.update(
+                doc.reference,
+                mapOf(
+                    "volunteerName" to user.name,
+                    "volunteerUsername" to user.username,
+                    "volunteerAvatarUrl" to user.avatarUrl,
+                    "volunteerVerified" to user.isVerified
+                )
+            )
+        }
+        volunteerReports.forEach { doc ->
+            batch.update(
+                doc.reference,
+                mapOf(
+                    "volunteerName" to user.name,
+                    "volunteerUsername" to user.username,
+                    "volunteerAvatarUrl" to user.avatarUrl,
+                    "volunteerVerified" to user.isVerified
+                )
+            )
+        }
+        donorHelpRequests.forEach { doc ->
+            batch.update(
+                doc.reference,
+                mapOf(
+                    "donorName" to user.name,
+                    "donorUsername" to user.username,
+                    "donorAvatarUrl" to user.avatarUrl
+                )
+            )
+        }
+        if (volunteerCampaigns.isNotEmpty() || volunteerReports.isNotEmpty() || donorHelpRequests.isNotEmpty()) {
+            batch.commit().await()
+        }
+    }
+
+    private fun DocumentSnapshot.toUser(): User? {
+        val user = toObject(User::class.java) ?: return null
+        val verified = getBoolean("isVerified")
+            ?: getBoolean("verified")
+            ?: getBoolean("volunteerVerified")
+            ?: user.isVerified
+        val verifiedAt = getLong("verifiedAt") ?: user.verifiedAt
+        return user.copy(isVerified = verified, verifiedAt = verifiedAt)
+    }
     private fun DocumentSnapshot.toCampaign(): Campaign? = toObject(Campaign::class.java)
     private fun DocumentSnapshot.toHelpRequest(): HelpRequest? = toObject(HelpRequest::class.java)
     private fun DocumentSnapshot.toReport(): Report? = toObject(Report::class.java)

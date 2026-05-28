@@ -1,6 +1,6 @@
-# VolunteerHelp
+# Aidly
 
-VolunteerHelp — Android MVP застосунок для координації волонтерської допомоги на Kotlin + Jetpack Compose + Firebase.
+Aidly — Android MVP застосунок для координації волонтерської допомоги на Kotlin + Jetpack Compose + Firebase.
 
 ## Що використано
 

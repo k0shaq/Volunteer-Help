@@ -27,6 +27,7 @@ import com.example.volunteerhelp.model.CampaignType
 import com.example.volunteerhelp.model.User
 import com.example.volunteerhelp.ui.components.ErrorView
 import com.example.volunteerhelp.ui.components.PrimaryButton
+import com.example.volunteerhelp.util.FormLimits
 
 @Composable
 fun HelpFormScreen(
@@ -84,6 +85,7 @@ fun HelpFormScreen(
                 when {
                     campaign.type == CampaignType.FINANCIAL.name && parsedAmount <= 0.0 -> localError = "Для фінансової допомоги сума має бути більшою за 0"
                     campaign.type == CampaignType.MATERIAL.name && comment.isBlank() -> localError = "Для матеріальної допомоги опис є обов'язковим"
+                    comment.length > FormLimits.HELP_REQUEST_COMMENT_MAX -> localError = "Коментар має містити не більше ${FormLimits.HELP_REQUEST_COMMENT_MAX} символів"
                     else -> onSubmit(amount, comment, imageUri)
                 }
             }

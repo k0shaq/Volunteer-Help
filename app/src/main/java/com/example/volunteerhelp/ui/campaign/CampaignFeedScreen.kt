@@ -1,12 +1,15 @@
 package com.example.volunteerhelp.ui.campaign
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,9 +24,11 @@ import com.example.volunteerhelp.ui.components.EmptyStateView
 import com.example.volunteerhelp.ui.components.ErrorView
 import com.example.volunteerhelp.ui.components.FeedFilterBar
 import com.example.volunteerhelp.ui.components.ModernSearchBar
+import com.example.volunteerhelp.ui.components.RegionDropdownField
 import com.example.volunteerhelp.ui.components.ReportCard
 import com.example.volunteerhelp.viewmodel.CampaignFilter
 
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun CampaignFeedScreen(
     campaigns: List<Campaign>,
@@ -31,18 +36,35 @@ fun CampaignFeedScreen(
     filter: CampaignFilter,
     searchQuery: String,
     categoryFilter: String,
+    regionFilter: String,
     followedUserIds: Set<String>,
     errorMessage: String?,
     onCampaignClick: (String) -> Unit,
     onFilterSelected: (CampaignFilter) -> Unit,
     onSearchChanged: (String) -> Unit,
     onCategorySelected: (String) -> Unit,
+    onRegionSelected: (String) -> Unit,
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val visibleReports = if (filter == CampaignFilter.FOLLOWING) {
-        reports.filter { it.volunteerId in followedUserIds }
-    } else {
-        reports
+    val refreshing = false
+    val pullRefreshState = rememberPullRefreshState(refreshing = refreshing, onRefresh = onRefresh)
+    val normalizedQuery = searchQuery.trim().lowercase()
+    val visibleReports = reports.filter { report ->
+        val filterAllowsReports = when (filter) {
+            CampaignFilter.ALL, CampaignFilter.REPORTS -> true
+            CampaignFilter.FOLLOWING -> report.volunteerId in followedUserIds
+            else -> false
+        }
+        filterAllowsReports &&
+            categoryFilter.isBlank() &&
+            regionFilter.isBlank() &&
+            (
+                normalizedQuery.isBlank() ||
+                    report.campaignTitle.lowercase().contains(normalizedQuery) ||
+                    report.description.lowercase().contains(normalizedQuery) ||
+                    report.volunteerName.lowercase().contains(normalizedQuery)
+            )
     }
     val items = buildList {
         if (filter != CampaignFilter.REPORTS) addAll(campaigns.map { FeedItem.CampaignItem(it) })
@@ -51,29 +73,44 @@ fun CampaignFeedScreen(
         }
     }.sortedByDescending { it.sortTime }
 
-    Column(
-        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        ModernSearchBar(query = searchQuery, onQueryChange = onSearchChanged, placeholder = "Пошук за назвою, містом або областю")
-        FeedFilterBar(selected = filter, onSelected = onFilterSelected)
-        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Box(modifier = modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             item {
-                FilterChip(selected = categoryFilter.isBlank(), onClick = { onCategorySelected("") }, label = { Text("Усі категорії") })
+                ModernSearchBar(query = searchQuery, onQueryChange = onSearchChanged, placeholder = "Пошук за назвою, містом або областю")
             }
-            items(CampaignCategories) { category ->
-                FilterChip(selected = categoryFilter == category, onClick = { onCategorySelected(category) }, label = { Text(category) })
+            item {
+                FeedFilterBar(selected = filter, onSelected = onFilterSelected)
             }
-        }
-        errorMessage?.let { ErrorView(message = it) }
-        if (items.isEmpty()) {
-            EmptyStateView(title = "Стрічка поки тиха", message = "Поки немає дописів за вибраними фільтрами.")
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            item {
+                RegionDropdownField(
+                    selectedRegion = regionFilter,
+                    onRegionSelected = onRegionSelected,
+                    includeAllOption = true,
+                    label = "Фільтр за областю"
+                )
+            }
+            item {
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        FilterChip(selected = categoryFilter.isBlank(), onClick = { onCategorySelected("") }, label = { Text("Усі категорії") })
+                    }
+                    items(CampaignCategories) { category ->
+                        FilterChip(selected = categoryFilter == category, onClick = { onCategorySelected(category) }, label = { Text(category) })
+                    }
+                }
+            }
+            errorMessage?.let { error ->
+                item { ErrorView(message = error) }
+            }
+            if (items.isEmpty()) {
+                item {
+                    EmptyStateView(title = "Стрічка поки тиха", message = "Поки немає дописів за вибраними фільтрами.")
+                }
+            } else {
                 items(items, key = { item ->
                     when (item) {
                         is FeedItem.CampaignItem -> "campaign_${item.campaign.id}"
@@ -81,11 +118,15 @@ fun CampaignFeedScreen(
                     }
                 }) { item ->
                     when (item) {
-                        is FeedItem.CampaignItem -> CampaignCard(campaign = item.campaign, onClick = { onCampaignClick(item.campaign.id) })
+                        is FeedItem.CampaignItem -> CampaignCard(
+                            campaign = item.campaign.copy(category = item.campaign.category.ifBlank { "Інше" }),
+                            onClick = { onCampaignClick(item.campaign.id) }
+                        )
                         is FeedItem.ReportItem -> ReportCard(report = item.report, onOpenCampaign = onCampaignClick)
                     }
                 }
             }
         }
+        PullRefreshIndicator(refreshing = refreshing, state = pullRefreshState, modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter))
     }
 }

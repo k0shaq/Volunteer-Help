@@ -13,6 +13,8 @@ import com.example.volunteerhelp.model.CampaignType
 import com.example.volunteerhelp.model.User
 import com.example.volunteerhelp.model.UserRole
 import com.example.volunteerhelp.util.Constants
+import com.example.volunteerhelp.util.FormLimits
+import com.example.volunteerhelp.util.FormValidators
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +45,8 @@ data class CampaignUiState(
     val successMessage: String? = null,
     val filter: CampaignFilter = CampaignFilter.ALL,
     val searchQuery: String = "",
-    val categoryFilter: String = ""
+    val categoryFilter: String = "",
+    val regionFilter: String = ""
 )
 
 class CampaignViewModel(
@@ -88,16 +91,24 @@ class CampaignViewModel(
         }
     }
 
+    fun refreshFeedCampaigns() {
+        observeFeedCampaigns()
+    }
+
     fun setFilter(filter: CampaignFilter) {
-        applyFilter(filter, _uiState.value.searchQuery, _uiState.value.categoryFilter)
+        applyFilter(filter, _uiState.value.searchQuery, _uiState.value.categoryFilter, _uiState.value.regionFilter)
     }
 
     fun setSearchQuery(query: String) {
-        applyFilter(_uiState.value.filter, query, _uiState.value.categoryFilter)
+        applyFilter(_uiState.value.filter, query, _uiState.value.categoryFilter, _uiState.value.regionFilter)
     }
 
     fun setCategoryFilter(category: String) {
-        applyFilter(_uiState.value.filter, _uiState.value.searchQuery, category)
+        applyFilter(_uiState.value.filter, _uiState.value.searchQuery, category, _uiState.value.regionFilter)
+    }
+
+    fun setRegionFilter(region: String) {
+        applyFilter(_uiState.value.filter, _uiState.value.searchQuery, _uiState.value.categoryFilter, region)
     }
 
     fun setFeedContext(region: String, followingIds: Set<String>) {
@@ -107,10 +118,10 @@ class CampaignViewModel(
     }
 
     private fun applyFilter(filter: CampaignFilter) {
-        applyFilter(filter, _uiState.value.searchQuery, _uiState.value.categoryFilter)
+        applyFilter(filter, _uiState.value.searchQuery, _uiState.value.categoryFilter, _uiState.value.regionFilter)
     }
 
-    private fun applyFilter(filter: CampaignFilter, query: String, category: String) {
+    private fun applyFilter(filter: CampaignFilter, query: String, category: String, region: String) {
         val normalized = query.trim().lowercase()
         val filtered = allActiveCampaigns
             .filter { campaign ->
@@ -120,7 +131,8 @@ class CampaignViewModel(
                     campaign.region.lowercase().contains(normalized) ||
                     campaign.description.lowercase().contains(normalized)
             }
-            .filter { category.isBlank() || it.category == category }
+            .filter { category.isBlank() || campaignCategory(it.category) == category }
+            .filter { region.isBlank() || it.region.equals(region, ignoreCase = true) }
             .filter {
                 when (filter) {
                     CampaignFilter.ALL, CampaignFilter.CAMPAIGNS, CampaignFilter.REPORTS -> true
@@ -129,13 +141,19 @@ class CampaignViewModel(
                     CampaignFilter.MY_REGION -> currentUserRegion.isBlank() || it.region.equals(currentUserRegion, ignoreCase = true)
                     CampaignFilter.FOLLOWING -> it.volunteerId in followedUserIds
                     CampaignFilter.ALMOST_FUNDED -> it.targetAmount > 0 && it.currentAmount / it.targetAmount >= 0.8
-                    CampaignFilter.COMPLETED -> it.status == CampaignStatus.COMPLETED.name || it.status == CampaignStatus.CLOSED.name
+                    CampaignFilter.COMPLETED -> CampaignStatus.fromStorage(it.status) in listOf(
+                        CampaignStatus.GOAL_REACHED,
+                        CampaignStatus.CLOSED,
+                        CampaignStatus.REPORTED
+                    )
                 }
             }
         _uiState.update {
-            it.copy(activeCampaigns = filtered, filter = filter, searchQuery = query, categoryFilter = category)
+            it.copy(activeCampaigns = filtered, filter = filter, searchQuery = query, categoryFilter = category, regionFilter = region)
         }
     }
+
+    private fun campaignCategory(category: String): String = category.ifBlank { "Інше" }
 
     fun observeMyCampaigns(volunteerId: String) {
         myCampaignsJob?.cancel()
@@ -207,6 +225,17 @@ class CampaignViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
+            runCatching {
+                FormValidators.validateMax(title.trim(), FormLimits.CAMPAIGN_TITLE_MAX, "Назва збору")
+                FormValidators.validateMax(description.trim(), FormLimits.CAMPAIGN_DESCRIPTION_MAX, "Опис збору")
+                FormValidators.validateCity(city.trim())
+                require(region.isNotBlank()) { "Вкажіть область" }
+                FormValidators.validateMax(requisites.trim(), FormLimits.REQUISITES_MAX, "Реквізити")
+                FormValidators.validateMax(materialGoal.trim(), FormLimits.MATERIAL_GOAL_MAX, "Матеріальна ціль")
+            }.onFailure { throwable ->
+                _uiState.update { it.copy(isLoading = false, errorMessage = throwable.message ?: "Перевірте поля форми") }
+                return@launch
+            }
             val uploadResult = cloudinaryRepository.uploadImage(imageUri)
             if (uploadResult is ResultState.Error) {
                 _uiState.update { it.copy(isLoading = false, errorMessage = uploadResult.message) }
@@ -218,7 +247,7 @@ class CampaignViewModel(
                 title = title.trim(),
                 description = description.trim(),
                 type = type.name,
-                category = category,
+                category = category.ifBlank { "Інше" },
                 targetAmount = if (type == CampaignType.FINANCIAL) targetAmount else 0.0,
                 currentAmount = 0.0,
                 materialGoal = if (type == CampaignType.MATERIAL) materialGoal.trim() else "",

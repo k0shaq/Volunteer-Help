@@ -74,9 +74,10 @@ fun CampaignDetailsScreen(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val isOwner = currentUser.id == campaign.volunteerId && currentUser.role == UserRole.VOLUNTEER.name
-    val canHelp = currentUser.role == UserRole.DONOR.name && campaign.status == CampaignStatus.ACTIVE.name
-    val canClose = isOwner && campaign.status == CampaignStatus.ACTIVE.name
-    val canAddReport = isOwner && campaign.status in listOf(CampaignStatus.CLOSED.name, CampaignStatus.COMPLETED.name)
+    val normalizedStatus = CampaignStatus.fromStorage(campaign.status)
+    val canHelp = currentUser.role == UserRole.DONOR.name && normalizedStatus == CampaignStatus.ACTIVE
+    val canClose = isOwner && CampaignStatus.canBeClosed(campaign.status)
+    val canAddReport = isOwner && CampaignStatus.canReceiveReport(campaign.status)
     val progress = if (campaign.targetAmount > 0) (campaign.currentAmount / campaign.targetAmount).coerceIn(0.0, 1.0).toFloat() else 0f
 
     Column(
@@ -127,7 +128,7 @@ fun CampaignDetailsScreen(
                     text = "Скопіювати реквізити",
                     onClick = {
                         clipboard.setText(AnnotatedString(campaign.requisites))
-                        context.copyToSystemClipboard("VolunteerHelp requisites", campaign.requisites)
+                        context.copyToSystemClipboard("Aidly requisites", campaign.requisites)
                         Toast.makeText(context, "Реквізити скопійовано", Toast.LENGTH_SHORT).show()
                     }
                 )

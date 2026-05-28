@@ -140,13 +140,19 @@ fun MainScreen(
                 filter = campaignState.filter,
                 searchQuery = campaignState.searchQuery,
                 categoryFilter = campaignState.categoryFilter,
+                regionFilter = campaignState.regionFilter,
                 followedUserIds = profileState.followingIds,
                 errorMessage = campaignState.errorMessage,
                 modifier = Modifier.padding(innerPadding),
                 onCampaignClick = onCampaignClick,
                 onFilterSelected = campaignViewModel::setFilter,
                 onSearchChanged = campaignViewModel::setSearchQuery,
-                onCategorySelected = campaignViewModel::setCategoryFilter
+                onCategorySelected = campaignViewModel::setCategoryFilter,
+                onRegionSelected = campaignViewModel::setRegionFilter,
+                onRefresh = {
+                    campaignViewModel.refreshFeedCampaigns()
+                    reportViewModel.refreshFeedReports()
+                }
             )
             "Пошук" -> SearchProfilesScreen(
                 query = searchQuery,
@@ -166,10 +172,14 @@ fun MainScreen(
                 modifier = Modifier.padding(innerPadding),
                 onApprove = { helpRequestId -> helpRequestViewModel.approveRequest(helpRequestId, currentUser.id) },
                 onReject = { helpRequestId -> helpRequestViewModel.rejectRequest(helpRequestId, currentUser.id) }
+                ,
+                onOpenProfile = onOpenProfile
             )
             else -> ProfileScreen(
                 user = currentProfile,
                 stats = profileState.stats,
+                campaigns = profileState.profileCampaigns,
+                reports = profileState.profileReports,
                 isLoading = profileState.isLoading,
                 errorMessage = profileState.errorMessage,
                 modifier = Modifier.padding(innerPadding),
@@ -177,6 +187,7 @@ fun MainScreen(
                 onVerify = onVerifyClick,
                 onFollowersClick = { profileViewModel.loadFollowers(currentProfile.id) },
                 onFollowingClick = { profileViewModel.loadFollowing(currentProfile.id) },
+                onCampaignClick = onCampaignClick,
                 onLogout = onLogout
             )
         }

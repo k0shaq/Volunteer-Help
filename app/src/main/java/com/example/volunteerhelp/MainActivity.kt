@@ -10,7 +10,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            VolunteerHelpRoot(app = application as VolunteerHelpApp)
+            AidlyRoot(app = application as AidlyApp)
         }
     }
 }

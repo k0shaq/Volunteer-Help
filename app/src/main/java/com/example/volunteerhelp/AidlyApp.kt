@@ -11,7 +11,7 @@ import com.example.volunteerhelp.data.AuthRepository
 import com.example.volunteerhelp.data.CloudinaryRepository
 import com.example.volunteerhelp.data.FirestoreRepository
 import com.example.volunteerhelp.navigation.AppNavigation
-import com.example.volunteerhelp.ui.theme.VolunteerHelpTheme
+import com.example.volunteerhelp.ui.theme.AidlyTheme
 import com.example.volunteerhelp.util.Constants
 import com.example.volunteerhelp.viewmodel.AuthViewModel
 import com.example.volunteerhelp.viewmodel.CampaignViewModel
@@ -19,7 +19,7 @@ import com.example.volunteerhelp.viewmodel.HelpRequestViewModel
 import com.example.volunteerhelp.viewmodel.ProfileViewModel
 import com.example.volunteerhelp.viewmodel.ReportViewModel
 
-class VolunteerHelpApp : Application() {
+class AidlyApp : Application() {
     val authRepository by lazy { AuthRepository() }
     val firestoreRepository by lazy { FirestoreRepository() }
     val cloudinaryRepository by lazy { CloudinaryRepository(applicationContext) }
@@ -34,8 +34,8 @@ class VolunteerHelpApp : Application() {
     }
 }
 
-class VolunteerHelpViewModelFactory(
-    private val app: VolunteerHelpApp
+class AidlyViewModelFactory(
+    private val app: AidlyApp
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when {
@@ -60,15 +60,15 @@ class VolunteerHelpViewModelFactory(
 }
 
 @Composable
-fun VolunteerHelpRoot(app: VolunteerHelpApp = LocalContext.current.applicationContext as VolunteerHelpApp) {
-    val factory = VolunteerHelpViewModelFactory(app)
+fun AidlyRoot(app: AidlyApp = LocalContext.current.applicationContext as AidlyApp) {
+    val factory = AidlyViewModelFactory(app)
     val authViewModel: AuthViewModel = viewModel(factory = factory)
     val campaignViewModel: CampaignViewModel = viewModel(factory = factory)
     val helpRequestViewModel: HelpRequestViewModel = viewModel(factory = factory)
     val profileViewModel: ProfileViewModel = viewModel(factory = factory)
     val reportViewModel: ReportViewModel = viewModel(factory = factory)
 
-    VolunteerHelpTheme {
+    AidlyTheme {
         AppNavigation(
             authViewModel = authViewModel,
             campaignViewModel = campaignViewModel,

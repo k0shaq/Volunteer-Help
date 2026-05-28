@@ -71,6 +71,10 @@ class ReportViewModel(
         }
     }
 
+    fun refreshFeedReports() {
+        observeFeedReports()
+    }
+
     fun createReport(
         campaign: Campaign,
         volunteer: User,

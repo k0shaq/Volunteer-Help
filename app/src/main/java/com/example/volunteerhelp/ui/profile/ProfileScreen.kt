@@ -20,6 +20,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -36,29 +37,38 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.volunteerhelp.model.Campaign
 import com.example.volunteerhelp.model.ProfileStats
+import com.example.volunteerhelp.model.Report
 import com.example.volunteerhelp.model.User
 import com.example.volunteerhelp.model.UserRole
+import com.example.volunteerhelp.ui.components.CampaignCard
 import com.example.volunteerhelp.ui.components.EmptyStateView
 import com.example.volunteerhelp.ui.components.ErrorView
 import com.example.volunteerhelp.ui.components.InfoCard
 import com.example.volunteerhelp.ui.components.ModernSearchBar
 import com.example.volunteerhelp.ui.components.PrimaryButton
 import com.example.volunteerhelp.ui.components.ProfileHeader
+import com.example.volunteerhelp.ui.components.RegionDropdownField
+import com.example.volunteerhelp.ui.components.ReportCard
 import com.example.volunteerhelp.ui.components.SecondaryButton
 import com.example.volunteerhelp.ui.components.UserAvatar
 import com.example.volunteerhelp.ui.components.VerifiedBadge
+import com.example.volunteerhelp.util.FormLimits
 
 @Composable
 fun ProfileScreen(
     user: User,
     stats: ProfileStats,
+    campaigns: List<Campaign>,
+    reports: List<Report>,
     isLoading: Boolean,
     errorMessage: String?,
     onEdit: () -> Unit,
     onVerify: () -> Unit,
     onFollowersClick: () -> Unit,
     onFollowingClick: () -> Unit,
+    onCampaignClick: (String) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -80,10 +90,11 @@ fun ProfileScreen(
         item {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 errorMessage?.let { ErrorView(message = it) }
-                if (user.role == UserRole.VOLUNTEER.name && !user.isVerified) {
+                if (!isLoading && user.role == UserRole.VOLUNTEER.name && !user.isVerified) {
                     VerificationPrompt(isLoading = isLoading, onVerify = onVerify)
                 }
                 ProfileImpactSummary(stats = stats, role = user.role)
+                ProfileSocialTabs(stats = stats, role = user.role, campaigns = campaigns, reports = reports, onCampaignClick = onCampaignClick)
                 SecondaryButton(text = "Вийти", onClick = onLogout)
             }
         }
@@ -95,12 +106,15 @@ fun PublicProfileScreen(
     user: User?,
     currentUser: User,
     stats: ProfileStats,
+    campaigns: List<Campaign>,
+    reports: List<Report>,
     isFollowing: Boolean,
     isLoading: Boolean,
     errorMessage: String?,
     onFollowToggle: () -> Unit,
     onFollowersClick: () -> Unit,
     onFollowingClick: () -> Unit,
+    onCampaignClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (user == null) {
@@ -125,9 +139,84 @@ fun PublicProfileScreen(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 errorMessage?.let { ErrorView(message = it) }
                 ProfileImpactSummary(stats = stats, role = user.role)
+                ProfileSocialTabs(stats = stats, role = user.role, campaigns = campaigns, reports = reports, onCampaignClick = onCampaignClick)
             }
         }
     }
+}
+
+@Composable
+private fun ProfileSocialTabs(
+    stats: ProfileStats,
+    role: String,
+    campaigns: List<Campaign>,
+    reports: List<Report>,
+    onCampaignClick: (String) -> Unit
+) {
+    val isVolunteer = role == UserRole.VOLUNTEER.name
+    val tabs = if (isVolunteer) {
+        listOf("Збори", "Звіти", "Допомога", "Про профіль")
+    } else {
+        listOf("Допомога", "Про профіль")
+    }
+    var selectedTab by rememberSaveable(role) { mutableStateOf(tabs.first()) }
+    if (selectedTab !in tabs) selectedTab = tabs.first()
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(tabs.size) { index ->
+                val tab = tabs[index]
+                FilterChip(selected = selectedTab == tab, onClick = { selectedTab = tab }, label = { Text(tab) })
+            }
+        }
+        when (selectedTab) {
+            "Збори" -> {
+                if (!isVolunteer) {
+                    DonorHelpInfo(stats)
+                } else if (campaigns.isEmpty()) {
+                    EmptyStateView("Зборів ще немає", "Коли волонтер створить збір, він з'явиться тут.")
+                } else {
+                    campaigns.forEach { campaign ->
+                        CampaignCard(
+                            campaign = campaign.copy(category = campaign.category.ifBlank { "Інше" }),
+                            onClick = { onCampaignClick(campaign.id) }
+                        )
+                    }
+                }
+            }
+            "Звіти" -> {
+                if (!isVolunteer) {
+                    DonorHelpInfo(stats)
+                } else if (reports.isEmpty()) {
+                    EmptyStateView("Звітів ще немає", "Після додавання звіту він буде видно у профілі.")
+                } else {
+                    reports.forEach { report ->
+                        ReportCard(report = report, onOpenCampaign = onCampaignClick)
+                    }
+                }
+            }
+            "Допомога" -> if (isVolunteer) VolunteerHelpInfo(stats) else DonorHelpInfo(stats)
+            else -> InfoCard(
+                title = "Про профіль",
+                body = "${stats.title.ifBlank { "Профіль Aidly" }}. ${stats.level.ifBlank { "Соціальний профіль" }}."
+            )
+        }
+    }
+}
+
+@Composable
+private fun DonorHelpInfo(stats: ProfileStats) {
+    InfoCard(
+        title = "Благодійна активність",
+        body = "Підтверджено допомог: ${stats.approvedHelpCount}. Очікує підтвердження: ${stats.pendingHelpCount}. Рейтинг: ${stats.rating}. ${stats.title.ifBlank { "Новачок допомоги" }}."
+    )
+}
+
+@Composable
+private fun VolunteerHelpInfo(stats: ProfileStats) {
+    InfoCard(
+        title = "Підтвердження допомоги",
+        body = "Підтверджено заявок: ${stats.approvedHelpRequestsCount}. Очікують: ${stats.pendingHelpRequestsCount}."
+    )
 }
 
 @Composable
@@ -163,13 +252,15 @@ private fun ProfileImpactSummary(stats: ProfileStats, role: String) {
                 fontWeight = FontWeight.SemiBold
             )
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxWidth()) {
-                CompactMetric("Збори", stats.totalCampaigns.toString(), Modifier.weight(1f))
-                CompactMetric("Звіти", stats.reportsCount.toString(), Modifier.weight(1f))
-                CompactMetric(
-                    if (role == UserRole.DONOR.name) "Допомог" else "Підтверджень",
-                    (stats.approvedHelpCount + stats.approvedHelpRequestsCount).toString(),
-                    Modifier.weight(1f)
-                )
+                if (role == UserRole.VOLUNTEER.name) {
+                    CompactMetric("Збори", stats.totalCampaigns.toString(), Modifier.weight(1f))
+                    CompactMetric("Звіти", stats.reportsCount.toString(), Modifier.weight(1f))
+                    CompactMetric("Підтверджень", stats.approvedHelpRequestsCount.toString(), Modifier.weight(1f))
+                } else {
+                    CompactMetric("Допомог", stats.approvedHelpCount.toString(), Modifier.weight(1f))
+                    CompactMetric("Очікує", stats.pendingHelpCount.toString(), Modifier.weight(1f))
+                    CompactMetric("Рейтинг", stats.rating.toString(), Modifier.weight(1f))
+                }
             }
             Text(
                 text = if (role == UserRole.DONOR.name) {
@@ -219,7 +310,7 @@ fun FollowListDialog(
                                         Text(user.name, style = MaterialTheme.typography.titleMedium)
                                         VerifiedBadge(user.role == UserRole.VOLUNTEER.name && user.isVerified)
                                     }
-                                    Text(user.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: user.email, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(user.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: "Профіль", color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -301,9 +392,14 @@ fun EditProfileScreen(
         }
         OutlinedTextField(value = name, onValueChange = { name = it; localError = null }, label = { Text("Ім'я") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = username, onValueChange = { username = it.removePrefix("@"); localError = null }, label = { Text("Нікнейм") }, prefix = { Text("@") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = bio, onValueChange = { bio = it.take(160); localError = null }, label = { Text("Bio") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+        OutlinedTextField(value = bio, onValueChange = { bio = it; localError = null }, label = { Text("Bio") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
         OutlinedTextField(value = city, onValueChange = { city = it }, label = { Text("Місто") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = region, onValueChange = { region = it }, label = { Text("Область") }, modifier = Modifier.fillMaxWidth())
+        RegionDropdownField(
+            selectedRegion = region,
+            onRegionSelected = { region = it; localError = null },
+            modifier = Modifier.fillMaxWidth(),
+            isError = localError?.contains("область", ignoreCase = true) == true
+        )
         localError?.let { ErrorView(message = it) }
         errorMessage?.let { ErrorView(message = it) }
         PrimaryButton(
@@ -312,8 +408,13 @@ fun EditProfileScreen(
             onClick = {
                 when {
                     name.isBlank() -> localError = "Ім'я не може бути порожнім"
-                    username.length !in 3..20 -> localError = "Нікнейм має містити від 3 до 20 символів"
+                    name.length > FormLimits.NAME_MAX -> localError = "Ім'я має містити не більше ${FormLimits.NAME_MAX} символів"
+                    username.length !in FormLimits.USERNAME_MIN..FormLimits.USERNAME_MAX -> localError = "Нікнейм має містити від ${FormLimits.USERNAME_MIN} до ${FormLimits.USERNAME_MAX} символів"
                     !username.matches(Regex("^[A-Za-z0-9._]+$")) -> localError = "Нікнейм може містити латинські літери, цифри, крапку та _"
+                    bio.length > FormLimits.BIO_MAX -> localError = "Bio має містити не більше ${FormLimits.BIO_MAX} символів"
+                    city.isBlank() -> localError = "Вкажіть місто"
+                    city.length > FormLimits.CITY_MAX -> localError = "Місто має містити не більше ${FormLimits.CITY_MAX} символів"
+                    region.isBlank() -> localError = "Вкажіть область"
                     else -> onSave(name, username, bio, city, region, avatarUri, coverUri)
                 }
             }
@@ -331,10 +432,10 @@ fun SearchProfilesScreen(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ModernSearchBar(query = query, onQueryChange = onQueryChange, placeholder = "Пошук профілю, @username або email")
+        ModernSearchBar(query = query, onQueryChange = onQueryChange, placeholder = "Пошук профілю, @username, місто або область")
         errorMessage?.let { ErrorView(message = it) }
         if (users.isEmpty()) {
-            EmptyStateView("Знайдіть людей", "Введіть ім'я, username, email, місто або область.")
+            EmptyStateView("Знайдіть людей", "Введіть ім'я, username, місто або область.")
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 96.dp)) {
                 items(users, key = { it.id }) { user ->
@@ -346,7 +447,7 @@ fun SearchProfilesScreen(
                                     Text(user.name, style = MaterialTheme.typography.titleMedium)
                                     VerifiedBadge(user.role == UserRole.VOLUNTEER.name && user.isVerified)
                                 }
-                                Text(user.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: user.email)
+                                Text(user.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: "Профіль")
                                 Text(user.bio.ifBlank { listOf(user.city, user.region).filter { it.isNotBlank() }.joinToString(", ") }, maxLines = 1)
                             }
                             TextButton(onClick = { onOpenProfile(user.id) }) { Text("Відкрити") }

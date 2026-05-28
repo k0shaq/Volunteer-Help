@@ -48,7 +48,7 @@ fun MyCampaignsScreen(
                 items(campaigns, key = { it.id }) { campaign ->
                     androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         CampaignCard(campaign = campaign, onClick = { onCampaignClick(campaign.id) })
-                        if (campaign.status == CampaignStatus.ACTIVE.name) {
+                        if (CampaignStatus.canBeClosed(campaign.status)) {
                             OutlinedButton(onClick = { onCloseCampaign(campaign.id) }) {
                                 Text(text = "Закрити збір")
                             }

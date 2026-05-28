@@ -6,6 +6,8 @@ import com.example.volunteerhelp.data.AuthRepository
 import com.example.volunteerhelp.data.FirestoreRepository
 import com.example.volunteerhelp.model.User
 import com.example.volunteerhelp.model.UserRole
+import com.example.volunteerhelp.util.FormLimits
+import com.example.volunteerhelp.util.FormValidators
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -88,6 +90,7 @@ class AuthViewModel(
             runCatching {
                 val cleanUsername = username.trim().removePrefix("@")
                 validateUsernameFormat(cleanUsername)
+                FormValidators.validateName(name.trim())
                 val currentUser = authRepository.getCurrentUser()
                 val firebaseUser = if (currentUser != null && currentUser.email.equals(email.trim(), ignoreCase = true)) {
                     currentUser
@@ -100,6 +103,7 @@ class AuthViewModel(
                 val user = User(
                     id = firebaseUser.uid,
                     name = name.trim(),
+                    nameLowercase = name.trim().lowercase(),
                     email = firebaseUser.email ?: email.trim(),
                     username = cleanUsername,
                     usernameLowercase = cleanUsername.lowercase(),
@@ -141,7 +145,9 @@ class AuthViewModel(
     }
 
     private fun validateUsernameFormat(username: String) {
-        require(username.length in 3..20) { "Нікнейм має містити від 3 до 20 символів" }
+        require(username.length in FormLimits.USERNAME_MIN..FormLimits.USERNAME_MAX) {
+            "Нікнейм має містити від ${FormLimits.USERNAME_MIN} до ${FormLimits.USERNAME_MAX} символів"
+        }
         require(username.matches(Regex("^[A-Za-z0-9._]+$"))) { "Нікнейм може містити латинські літери, цифри, крапку та _" }
     }
 }

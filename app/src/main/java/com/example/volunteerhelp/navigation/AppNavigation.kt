@@ -337,6 +337,8 @@ fun AppNavigation(
                         user = profileState.publicUser,
                         currentUser = currentUser,
                         stats = profileState.stats,
+                        campaigns = profileState.profileCampaigns,
+                        reports = profileState.profileReports,
                         isFollowing = profileState.isFollowing,
                         isLoading = profileState.isLoading,
                         errorMessage = profileState.errorMessage,
@@ -351,7 +353,8 @@ fun AppNavigation(
                             }
                         },
                         onFollowersClick = { profileViewModel.loadFollowers(targetUserId) },
-                        onFollowingClick = { profileViewModel.loadFollowing(targetUserId) }
+                        onFollowingClick = { profileViewModel.loadFollowing(targetUserId) },
+                        onCampaignClick = { campaignId -> navController.navigate(Screen.CampaignDetails.createRoute(campaignId)) }
                     )
                 } else {
                     SplashScreen()

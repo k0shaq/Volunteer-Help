@@ -114,13 +114,7 @@ fun InfoCard(title: String, body: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun CampaignStatusChip(status: String) {
-    val label = when (status) {
-        CampaignStatus.ACTIVE.name -> "Активний"
-        CampaignStatus.COMPLETED.name -> "Майже завершено"
-        CampaignStatus.CLOSED.name -> "Завершено"
-        else -> status
-    }
-    AssistChip(onClick = {}, label = { Text(label) })
+    AssistChip(onClick = {}, label = { Text(CampaignStatus.label(status)) })
 }
 
 @Composable
@@ -130,7 +124,7 @@ fun CampaignTypeChip(type: String) {
 
 @Composable
 fun CategoryChip(category: String) {
-    if (category.isNotBlank()) AssistChip(onClick = {}, label = { Text(category) })
+    AssistChip(onClick = {}, label = { Text(category.ifBlank { "Інше" }) })
 }
 
 @Composable
@@ -204,6 +198,9 @@ fun CampaignCard(campaign: Campaign, onClick: () -> Unit, modifier: Modifier = M
                     Text(text = "Потрібно: ${campaign.materialGoal.ifBlank { "Матеріальна допомога" }}", style = MaterialTheme.typography.labelMedium)
                     Text(text = "Підтверджено допомог: ${campaign.currentAmount.toInt()}", style = MaterialTheme.typography.bodySmall)
                 }
+                if (CampaignStatus.fromStorage(campaign.status) == CampaignStatus.ACTIVE) {
+                    Text(text = "Я допоміг", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                }
                 Text(text = "${campaign.city}, ${campaign.region} · ${DateFormatter.format(campaign.createdAt)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -239,6 +236,7 @@ fun ReportCard(report: Report, onOpenCampaign: (String) -> Unit, modifier: Modif
                     Text(text = report.campaignTitle.ifBlank { "Відкрити збір" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
             }
+            CampaignStatusChip(CampaignStatus.REPORTED.name)
             if (!report.imageUrl.isNullOrBlank()) {
                 AsyncImage(model = report.imageUrl, contentDescription = "Звіт", modifier = Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
             }
@@ -270,15 +268,19 @@ fun ProfileHeader(
                 VerifiedBadge(user.role == UserRole.VOLUNTEER.name && user.isVerified)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = user.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: user.email, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = user.username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: "Профіль", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(text = "·")
                 Text(text = if (user.role == UserRole.VOLUNTEER.name) "Волонтер" else "Благодійник", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            }
+            if (user.role == UserRole.VOLUNTEER.name && user.isVerified) {
+                AssistChip(onClick = {}, label = { Text("Верифікований волонтер") })
             }
             if (user.bio.isNotBlank()) Text(text = user.bio)
             val location = listOf(user.city, user.region).filter { it.isNotBlank() }.joinToString(", ")
             if (location.isNotBlank()) {
                 Text(text = location, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Text(text = "Профіль створено: ${DateFormatter.format(user.createdAt)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatCard("Підписники", user.followersCount.toString(), Modifier.weight(1f), onFollowersClick)
                 StatCard("Підписки", user.followingCount.toString(), Modifier.weight(1f), onFollowingClick)

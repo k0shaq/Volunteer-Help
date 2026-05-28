@@ -13,6 +13,8 @@ import com.example.volunteerhelp.model.HelpRequestStatus
 import com.example.volunteerhelp.model.User
 import com.example.volunteerhelp.model.UserRole
 import com.example.volunteerhelp.util.Constants
+import com.example.volunteerhelp.util.FormLimits
+import com.example.volunteerhelp.util.FormValidators
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,6 +96,12 @@ class HelpRequestViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null, successMessage = null) }
             val parsedAmount = amountText.replace(',', '.').toDoubleOrNull() ?: 0.0
+            runCatching {
+                FormValidators.validateMax(comment.trim(), FormLimits.HELP_REQUEST_COMMENT_MAX, "Коментар")
+            }.onFailure { throwable ->
+                _uiState.update { it.copy(isLoading = false, errorMessage = throwable.message ?: "Перевірте поля форми") }
+                return@launch
+            }
             val uploadResult = cloudinaryRepository.uploadImage(screenshotUri)
             if (uploadResult is ResultState.Error) {
                 _uiState.update { it.copy(isLoading = false, errorMessage = uploadResult.message) }

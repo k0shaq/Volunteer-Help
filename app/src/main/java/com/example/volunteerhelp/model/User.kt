@@ -3,6 +3,7 @@ package com.example.volunteerhelp.model
 data class User(
     val id: String = "",
     val name: String = "",
+    val nameLowercase: String = "",
     val email: String = "",
     val username: String = "",
     val usernameLowercase: String = "",
@@ -11,7 +12,9 @@ data class User(
     val coverImageUrl: String? = null,
     val bio: String = "",
     val city: String = "",
+    val cityLowercase: String = "",
     val region: String = "",
+    val regionLowercase: String = "",
     val rating: Int = 0,
     val isVerified: Boolean = false,
     val verifiedAt: Long = 0L,

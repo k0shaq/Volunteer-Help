@@ -32,8 +32,10 @@ import com.example.volunteerhelp.ui.components.EmptyStateView
 import com.example.volunteerhelp.ui.components.ErrorView
 import com.example.volunteerhelp.ui.components.InfoCard
 import com.example.volunteerhelp.ui.components.PrimaryButton
+import com.example.volunteerhelp.ui.components.RegionDropdownField
 import com.example.volunteerhelp.ui.components.SectionHeader
 import com.example.volunteerhelp.ui.components.SecondaryButton
+import com.example.volunteerhelp.util.FormLimits
 
 @Composable
 fun CreateCampaignScreen(
@@ -86,7 +88,12 @@ fun CreateCampaignScreen(
         OutlinedTextField(value = title, onValueChange = { title = it; localError = null }, label = { Text("Назва") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         OutlinedTextField(value = description, onValueChange = { description = it; localError = null }, label = { Text("Опис") }, modifier = Modifier.fillMaxWidth(), minLines = 4)
         OutlinedTextField(value = city, onValueChange = { city = it; localError = null }, label = { Text("Місто") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(value = region, onValueChange = { region = it; localError = null }, label = { Text("Область") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        RegionDropdownField(
+            selectedRegion = region,
+            onRegionSelected = { region = it; localError = null },
+            modifier = Modifier.fillMaxWidth(),
+            isError = localError?.contains("область", ignoreCase = true) == true
+        )
         if (type == CampaignType.FINANCIAL) {
             OutlinedTextField(value = targetAmount, onValueChange = { targetAmount = it; localError = null }, label = { Text("Цільова сума, грн") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             OutlinedTextField(value = requisites, onValueChange = { requisites = it }, label = { Text("Реквізити") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
@@ -104,12 +111,17 @@ fun CreateCampaignScreen(
                 val parsedTarget = targetAmount.replace(',', '.').toDoubleOrNull() ?: 0.0
                 when {
                     title.isBlank() -> localError = "Назва не може бути порожньою"
+                    title.length > FormLimits.CAMPAIGN_TITLE_MAX -> localError = "Назва збору має містити не більше ${FormLimits.CAMPAIGN_TITLE_MAX} символів"
                     description.isBlank() -> localError = "Опис не може бути порожнім"
+                    description.length > FormLimits.CAMPAIGN_DESCRIPTION_MAX -> localError = "Опис збору має містити не більше ${FormLimits.CAMPAIGN_DESCRIPTION_MAX} символів"
                     city.isBlank() -> localError = "Вкажіть місто"
+                    city.length > FormLimits.CITY_MAX -> localError = "Місто має містити не більше ${FormLimits.CITY_MAX} символів"
                     region.isBlank() -> localError = "Вкажіть область"
                     category.isBlank() -> localError = "Оберіть категорію"
                     type == CampaignType.FINANCIAL && parsedTarget <= 0.0 -> localError = "Для фінансового збору сума має бути більшою за 0"
+                    requisites.length > FormLimits.REQUISITES_MAX -> localError = "Реквізити мають містити не більше ${FormLimits.REQUISITES_MAX} символів"
                     type == CampaignType.MATERIAL && materialGoal.isBlank() -> localError = "Опишіть, що саме потрібно"
+                    materialGoal.length > FormLimits.MATERIAL_GOAL_MAX -> localError = "Матеріальна ціль має містити не більше ${FormLimits.MATERIAL_GOAL_MAX} символів"
                     else -> onSubmit(title, description, type, category, parsedTarget, materialGoal, city, region, requisites, imageUri)
                 }
             }
