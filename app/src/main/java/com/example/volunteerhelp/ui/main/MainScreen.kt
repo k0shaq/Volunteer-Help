@@ -1,6 +1,8 @@
 package com.example.volunteerhelp.ui.main
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
@@ -27,7 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.volunteerhelp.R
 import com.example.volunteerhelp.model.User
 import com.example.volunteerhelp.model.UserRole
 import com.example.volunteerhelp.ui.campaign.CampaignFeedScreen
@@ -105,6 +110,15 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    Image(
+                        painter = painterResource(id = R.drawable.aidly_logo),
+                        contentDescription = "Aidly",
+                        modifier = Modifier
+                            .padding(start = 16.dp)
+                            .size(36.dp)
+                    )
+                },
                 title = { Text(currentTitle) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background)
             )

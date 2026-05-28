@@ -371,7 +371,6 @@ class FirestoreRepository(
             if (helpRequest.volunteerId != volunteerId) throw IllegalStateException("Недостатньо прав для підтвердження")
             if (helpRequest.status != HelpRequestStatus.PENDING.name) throw IllegalStateException("Заявка вже оброблена")
             val campaignRef = firestore.collection(Constants.CAMPAIGNS_COLLECTION).document(helpRequest.campaignId)
-            val donorRef = firestore.collection(Constants.USERS_COLLECTION).document(helpRequest.donorId)
             val campaign = transaction.get(campaignRef).toObject(Campaign::class.java)
                 ?: throw IllegalStateException("Збір не знайдено")
             transaction.update(helpRequestRef, "status", HelpRequestStatus.APPROVED.name)
@@ -388,11 +387,9 @@ class FirestoreRepository(
                     currentStatus.name
                 }
                 transaction.update(campaignRef, mapOf("currentAmount" to newAmount, "status" to newStatus))
-                transaction.update(donorRef, "totalHelpAmount", FieldValue.increment(helpRequest.amount))
             } else {
                 transaction.update(campaignRef, "currentAmount", campaign.currentAmount + 1.0)
             }
-            transaction.update(donorRef, "rating", FieldValue.increment(calculatePoints(helpRequest.type, helpRequest.amount).toLong()))
         }.await()
     }
 
